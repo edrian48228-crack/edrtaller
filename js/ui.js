@@ -1,6 +1,6 @@
 const UI = (() => {
   const $ = sel => document.querySelector(sel);
-  function toast(msg, ms=2200){
+  function toast(msg, ms=2400){
     const t = $('#toast');
     t.textContent = msg;
     t.classList.remove('hidden');
@@ -18,6 +18,10 @@ const UI = (() => {
     const d = new Date(ts);
     return d.toLocaleDateString('es-ES', { day:'2-digit', month:'short', year:'numeric' });
   }
+  function fmtDateTime(ts){
+    if(!ts) return '—';
+    return new Date(ts).toLocaleString('es-ES');
+  }
   function fmtDateInput(ts){
     if(!ts) return '';
     const d = new Date(ts);
@@ -25,11 +29,8 @@ const UI = (() => {
   }
   function statusLabel(s){
     return ({
-      pending:'Pendiente',
-      in_progress:'En proceso',
-      awaiting:'Esperando recogida',
-      completed:'Completada',
-      delivered:'Entregada'
+      pending:'Pendiente', in_progress:'En proceso',
+      awaiting:'Esperando recogida', completed:'Completada', delivered:'Entregada'
     })[s] || s;
   }
   async function resizeImage(file, maxDim=900, quality=.72){
@@ -53,5 +54,44 @@ const UI = (() => {
       reader.readAsDataURL(file);
     });
   }
-  return { $, toast, openModal, closeModal, escape, fmtDate, fmtDateInput, statusLabel, resizeImage };
+  async function blobToDataUrl(blob){
+    return new Promise((res,rej)=>{
+      const r = new FileReader();
+      r.onload = ()=> res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(blob);
+    });
+  }
+  // Grabador de audio sencillo
+  function createRecorder(){
+    let mediaRec = null, chunks = [], stream = null, startedAt = 0, tickTimer = null;
+    return {
+      async start(onTick){
+        stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        chunks = [];
+        mediaRec = new MediaRecorder(stream);
+        mediaRec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
+        mediaRec.start();
+        startedAt = Date.now();
+        if(onTick){ tickTimer = setInterval(()=> onTick(Math.floor((Date.now()-startedAt)/1000)), 500); }
+      },
+      async stop(){
+        clearInterval(tickTimer);
+        return new Promise(res=>{
+          mediaRec.onstop = async ()=>{
+            const blob = new Blob(chunks, { type: mediaRec.mimeType || 'audio/webm' });
+            stream.getTracks().forEach(t=>t.stop());
+            res(await blobToDataUrl(blob));
+          };
+          mediaRec.stop();
+        });
+      },
+      cancel(){
+        clearInterval(tickTimer);
+        try{ mediaRec && mediaRec.state!=='inactive' && mediaRec.stop(); }catch(e){}
+        try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+      }
+    };
+  }
+  return { $, toast, openModal, closeModal, escape, fmtDate, fmtDateTime, fmtDateInput, statusLabel, resizeImage, blobToDataUrl, createRecorder };
 })();

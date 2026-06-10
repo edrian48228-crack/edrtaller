@@ -1,38 +1,36 @@
-# Taller - Sistema de Reparaciones (PWA)
+# Taller — PWA de reparaciones (v2)
 
-Aplicación web progresiva (PWA) para gestionar las reparaciones electrónicas de tu taller. Funciona sin conexión, se instala en Android como una app nativa, y sincroniza vía GitHub mediante exportar/importar JSON.
+Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
+Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias.
 
-## Características
+## Novedades v2
+- **Sincronización GitHub vía API** (admin → token + usuario + repo + rama + ruta + auto-sync)
+- **Varias fotos del equipo** + foto del cliente
+- **Audio de aceptación** del cliente (grabar desde el navegador o subir archivo)
+- **"Sin datos disponibles"** en cada campo opcional
+- **Lista de equipos predefinida** y editable desde administración
+- **Guardar JSON en una ubicación** del dispositivo (File System Access API; auto-guardado)
+- **Migración automática y compatible** con datos creados en v1
 
-- 100% HTML + CSS + JavaScript (sin frameworks ni backend)
-- Instalable en Android (PWA)
-- Funciona offline (Service Worker con caché)
-- Contraseña de acceso (activable/desactivable desde Admin)
-- Registro de reparaciones con foto del equipo y del cliente
-- Estados: Pendiente, En proceso, Esperando recogida, Completada, Entregada
-- Notificación en dashboard de reparaciones para hoy
-- Búsqueda por cliente, equipo, teléfono o ID
-- Nombre del sistema personalizable desde Admin
-- Exportar/Importar datos JSON para sincronización vía GitHub
+## Instalación en GitHub Pages
+1. Sube esta carpeta a un repositorio GitHub.
+2. Settings → Pages → Branch: `main` → carpeta `/`.
+3. Abre la URL desde Android Chrome → menú → "Instalar app".
 
-## Desplegar en GitHub Pages
+## Sincronización con GitHub
+1. Crea un Personal Access Token (Fine-grained) con permiso **Contents: read/write** sobre tu repo.
+2. En la app: **Admin → Sincronización GitHub** → completa usuario, repo, rama, ruta del JSON y token.
+3. Activa "Sincronización automática". Cada cambio se sube como commit.
+4. En otro dispositivo: configura los mismos datos y pulsa **Bajar de GitHub**.
 
-1. Crea un repositorio en GitHub (ej: `taller-reparaciones`).
-2. Sube todos los archivos de este ZIP al repositorio.
-3. En el repo: **Settings → Pages → Source: Deploy from branch → main / root**.
-4. Espera 1-2 minutos. Tu PWA estará en `https://TU_USUARIO.github.io/taller-reparaciones/`.
-5. Abre la URL en Chrome de Android → menú → **Añadir a pantalla de inicio**.
+> El token solo se guarda en `localStorage` del dispositivo.
 
-## Sincronizar entre dispositivos
+## Guardar JSON en una ubicación del dispositivo
+**Admin → Guardar JSON en una ubicación → Elegir ubicación**. La app escribirá
+automáticamente cada cambio en ese archivo (requiere Chrome/Edge en Android o escritorio).
 
-1. En el dispositivo principal: Admin → **Exportar JSON**.
-2. Sube el archivo `taller-backup-YYYY-MM-DD.json` a tu repo de GitHub.
-3. En el otro dispositivo: descarga el JSON e importa desde Admin → **Importar JSON**.
+## Compatibilidad
+El sistema usa `schemaVersion` y una función de migración. Versiones futuras
+seguirán abriendo los JSON antiguos sin perder datos.
 
-## Primer acceso
-
-La primera vez que abras la app, la contraseña que escribas se guardará como contraseña maestra. Puedes cambiarla o desactivarla desde **Administración**.
-
----
-
-Creado por **Edrian Cruz Down** 👑
+Creado por **Edrian Cruz Down**.
