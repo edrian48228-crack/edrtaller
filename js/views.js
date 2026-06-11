@@ -330,6 +330,12 @@ const Views = (() => {
         </div>
         ${naWrap('price','Precio',`<input name="price" type="number" step="0.01" inputmode="decimal" value="${r.price!=null?r.price:''}">`,naFields)}
         ${naWrap('deposit','Anticipo',`<input name="deposit" type="number" step="0.01" inputmode="decimal" value="${r.deposit!=null?r.deposit:''}">`,naFields)}
+        <div class="form-group">
+          <label>Garantía (días desde la entrega)</label>
+          <input name="warrantyDays" type="number" min="0" step="1" inputmode="numeric"
+            placeholder="Ej: 30" value="${r.warrantyDays!=null?r.warrantyDays:(existing?'':(DB.settings.defaultWarrantyDays||''))}">
+          <p class="muted small" style="margin:6px 2px 0">La garantía comienza a contar el día que marques el equipo como <b>Entregado</b>.</p>
+        </div>
         ${naWrap('notes','Notas',`<textarea name="notes">${escape(r.notes||'')}</textarea>`,naFields)}
 
         <button type="submit" class="btn-primary" style="margin-top:8px">${existing?'Guardar cambios':'Registrar reparación'}</button>
@@ -546,6 +552,8 @@ const Views = (() => {
         const price = fd.get('price'); const dep = fd.get('deposit');
         data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
         data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
+        const wd = fd.get('warrantyDays');
+        data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
         data.devicePhotos = photos.device;
         data.devicePhoto = photos.device[0] || null;
         data.clientPhoto = photos.client;
@@ -618,6 +626,18 @@ const Views = (() => {
       <div class="detail-row"><span class="lbl">Entrega</span><span class="val">${r.dueDate?fmtDate(r.dueDate):'—'}</span></div>
       <div class="detail-row"><span class="lbl">Precio</span><span class="val">${naFields.includes('price')?'<span class="na-tag">Sin datos</span>':(r.price!=null?Number(r.price).toFixed(2):'<span class="muted">—</span>')}</span></div>
       <div class="detail-row"><span class="lbl">Anticipo</span><span class="val">${naFields.includes('deposit')?'<span class="na-tag">Sin datos</span>':(r.deposit!=null?Number(r.deposit).toFixed(2):'<span class="muted">—</span>')}</span></div>
+      ${(()=>{ 
+        if(!r.warrantyDays) return '<div class="detail-row"><span class="lbl">Garantía</span><span class="val"><span class="muted">—</span></span></div>';
+        if(r.status !== 'delivered' || !r.deliveredAt){
+          return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} días (empieza al entregar)</span></div>`;
+        }
+        const endTs = r.deliveredAt + r.warrantyDays*86400000;
+        const remaining = Math.ceil((endTs - Date.now())/86400000);
+        const status = remaining>0
+          ? `<span class="warranty-tag active">Vigente · ${remaining} día(s)</span>`
+          : `<span class="warranty-tag expired">Vencida</span>`;
+        return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} días · hasta ${fmtDate(endTs)} ${status}</span></div>`;
+      })()}
 
       ${r.acceptAudio ? `<div class="section-title">Aceptación del cliente</div><audio controls src="${r.acceptAudio}" style="width:100%"></audio>` : ''}
 
@@ -954,6 +974,24 @@ const Views = (() => {
       </div>
 
       <div class="admin-card">
+        <h3>Productos para ventas y compras</h3>
+        <p>Aparecen como sugerencias al registrar un movimiento</p>
+        <div class="chip-list" id="productTypes">
+          ${(s.productTypes||[]).map(d=>`<span class="chip-static">${escape(d)} <button data-rm-prod="${escape(d)}">×</button></span>`).join('')}
+        </div>
+        <div class="form-row" style="margin-top:10px">
+          <div class="form-group" style="margin:0"><input id="newProductType" placeholder="Nuevo producto (ej. Cable HDMI)"></div>
+          <div class="form-group" style="margin:0"><button class="btn-secondary" id="addProductBtn">Añadir</button></div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <h3>Garantía por defecto</h3>
+        <p>Días que se rellenarán automáticamente al crear una reparación nueva.</p>
+        <input id="defWarranty" type="number" min="0" step="1" inputmode="numeric" class="input-pill" value="${s.defaultWarrantyDays!=null?s.defaultWarrantyDays:30}">
+      </div>
+
+      <div class="admin-card">
         <h3>Estadísticas de ganancias</h3>
         <p>Calculadas sobre reparaciones <b>entregadas</b>. El saldo pendiente suma lo que aún no se ha cobrado.</p>
         ${(()=>{ 
@@ -1112,7 +1150,320 @@ const Views = (() => {
     document.querySelectorAll('[data-rm-dev]').forEach(b=>{
       b.onclick = ()=>{ DB.removeDeviceType(b.dataset.rmDev); admin(); };
     });
+
+    document.getElementById('addProductBtn').onclick = ()=>{
+      const v = document.getElementById('newProductType').value;
+      if(DB.addProductType(v)){
+        document.getElementById('newProductType').value = '';
+        UI.toast('Producto añadido'); admin();
+      } else UI.toast('Vacío o duplicado');
+    };
+    document.querySelectorAll('[data-rm-prod]').forEach(b=>{
+      b.onclick = ()=>{ DB.removeProductType(b.dataset.rmProd); admin(); };
+    });
+    document.getElementById('defWarranty').addEventListener('change', e=>{
+      const v = Math.max(0, parseInt(e.target.value,10)||0);
+      DB.updateSettings({ defaultWarrantyDays: v });
+      UI.toast('Garantía por defecto actualizada');
+    });
   }
 
-  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel };
+  // ============= VENTAS Y COMPRAS =============
+  const TX_FILTERS = [
+    {k:'all', label:'Todo'},
+    {k:'sale', label:'Ventas'},
+    {k:'purchase', label:'Compras'}
+  ];
+  function txLabel(t){ return t==='sale' ? 'Venta' : 'Compra'; }
+
+  function computeTxStats(list){
+    const now = new Date();
+    const t0 = new Date(now); t0.setHours(0,0,0,0);
+    const wd = (t0.getDay()+6)%7;
+    const w0 = new Date(t0); w0.setDate(w0.getDate()-wd);
+    const m0 = new Date(t0.getFullYear(), t0.getMonth(), 1);
+    const y0 = new Date(t0.getFullYear(), 0, 1);
+    const buckets = {
+      day:   {sale:0, purchase:0},
+      week:  {sale:0, purchase:0},
+      month: {sale:0, purchase:0},
+      year:  {sale:0, purchase:0},
+      total: {sale:0, purchase:0}
+    };
+    for(const tx of list){
+      const total = Number(tx.total||0);
+      const k = tx.type==='sale' ? 'sale' : 'purchase';
+      const ts = tx.date || tx.createdAt || 0;
+      buckets.total[k] += total;
+      if(ts >= y0.getTime()) buckets.year[k] += total;
+      if(ts >= m0.getTime()) buckets.month[k] += total;
+      if(ts >= w0.getTime()) buckets.week[k] += total;
+      if(ts >= t0.getTime()) buckets.day[k] += total;
+    }
+    return buckets;
+  }
+
+  function txCard(t){
+    const isSale = t.type==='sale';
+    const sign = isSale ? '+' : '-';
+    const cls = isSale ? 'sale' : 'purchase';
+    const qty = Number(t.quantity||0);
+    const unit = Number(t.unitPrice||0);
+    const total = Number(t.total||0);
+    const cp = t.counterparty ? ` · ${escape(t.counterparty)}` : '';
+    return `
+      <div class="tx-card ${cls}" data-tx-id="${escape(t.id)}">
+        <div class="tx-info">
+          <div class="tx-head">
+            <span class="tx-badge ${cls}">${txLabel(t.type)}</span>
+            <span class="tx-id">${escape(t.id)}</span>
+          </div>
+          <h3>${escape(t.product||'Producto')}</h3>
+          <p class="muted small">${qty} × $ ${unit.toFixed(2)}${cp}</p>
+          <p class="muted small">${fmtDate(t.date||t.createdAt)}</p>
+        </div>
+        <div class="tx-amount ${cls}">${sign} $ ${total.toFixed(2)}</div>
+      </div>`;
+  }
+
+  function bindTxCards(){
+    view().querySelectorAll('.tx-card').forEach(c=>{
+      c.addEventListener('click', ()=> showTransaction(c.dataset.txId));
+    });
+  }
+
+  function sales(filter){
+    const active = filter || 'all';
+    let list = DB.transactions.slice();
+    if(active!=='all') list = list.filter(t=>t.type===active);
+    list.sort((a,b)=>(b.date||b.createdAt||0)-(a.date||a.createdAt||0));
+
+    const stats = computeTxStats(DB.transactions);
+    const fmt = v=>'$ '+Number(v||0).toFixed(2);
+    function tile(label, b, accent){
+      const net = b.sale - b.purchase;
+      const netCls = net>=0 ? 'pos' : 'neg';
+      return `<div class="tx-stat-card ${accent||''}">
+        <div class="tx-stat-label">${escape(label)}</div>
+        <div class="tx-stat-rows">
+          <div><span class="dot sale"></span>Ventas <b>${fmt(b.sale)}</b></div>
+          <div><span class="dot purchase"></span>Compras <b>${fmt(b.purchase)}</b></div>
+        </div>
+        <div class="tx-stat-net ${netCls}">Neto: <b>${fmt(net)}</b></div>
+      </div>`;
+    }
+
+    const opts = TX_FILTERS.map(f=>`<option value="${f.k}" ${f.k===active?'selected':''}>${f.label}</option>`).join('');
+
+    const groups = groupByDate(list.map(t=>({ ...t, createdAt: t.date||t.createdAt })));
+    const grouped = groups.map(g=>`
+      ${sectionDivider(g.label, g.items.length)}
+      ${g.items.map(txCard).join('')}
+    `).join('');
+
+    view().innerHTML = `
+      <div class="greeting">Ventas y <span>Compras</span></div>
+      <div class="tx-stats-grid">
+        ${tile('Hoy', stats.day)}
+        ${tile('Esta semana', stats.week)}
+        ${tile('Este mes', stats.month)}
+        ${tile('Este año', stats.year)}
+        ${tile('Total histórico', stats.total, 'gold')}
+      </div>
+      <div class="btn-row" style="margin:14px 0 6px">
+        <button class="btn-secondary" id="newSaleBtn">${ICONS.plus} Nueva venta</button>
+        <button class="btn-secondary" id="newPurchaseBtn">${ICONS.plus} Nueva compra</button>
+      </div>
+      <div class="select-elegant" style="margin-top:10px">
+        <select id="txFilter" aria-label="Filtrar movimientos">${opts}</select>
+      </div>
+      ${list.length ? grouped : emptyState('Sin movimientos','Registra tu primera venta o compra')}
+    `;
+    document.getElementById('newSaleBtn').onclick = ()=> newTransaction('sale');
+    document.getElementById('newPurchaseBtn').onclick = ()=> newTransaction('purchase');
+    document.getElementById('txFilter').addEventListener('change', e=> sales(e.target.value));
+    bindTxCards();
+  }
+
+  function newTransaction(type, existing){
+    const t = existing || { type };
+    const productOptions = (DB.settings.productTypes||[])
+      .map(p=>`<option value="${escape(p)}">`).join('');
+    const dateVal = t.date ? fmtDateInput(t.date) : fmtDateInput(Date.now());
+
+    UI.openModal(`
+      <h2 style="margin:0 0 4px;font-size:20px">${existing?'Editar':'Nueva'} ${txLabel(t.type)}</h2>
+      <p class="muted small" style="margin:0 0 14px">Registra el movimiento con todos los detalles.</p>
+      <form id="txForm" novalidate>
+        <div class="form-group">
+          <label>Tipo</label>
+          <div class="select-elegant">
+            <select name="type">
+              <option value="sale" ${t.type==='sale'?'selected':''}>Venta (ingreso)</option>
+              <option value="purchase" ${t.type==='purchase'?'selected':''}>Compra (gasto)</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Producto *</label>
+          <input name="product" list="productTypesList" required placeholder="Selecciona o escribe" value="${escape(t.product||'')}">
+          <datalist id="productTypesList">${productOptions}</datalist>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cantidad *</label>
+            <input name="quantity" type="number" min="0" step="1" inputmode="numeric" required value="${t.quantity!=null?t.quantity:1}">
+          </div>
+          <div class="form-group">
+            <label>Precio unitario *</label>
+            <input name="unitPrice" type="number" min="0" step="0.01" inputmode="decimal" required value="${t.unitPrice!=null?t.unitPrice:''}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Total</label>
+          <input name="total" type="number" min="0" step="0.01" inputmode="decimal" id="txTotalInput" value="${t.total!=null?t.total:''}" placeholder="Se calcula automáticamente">
+          <p class="muted small" style="margin:6px 2px 0">Puedes ajustar el total si aplicaste un descuento.</p>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Fecha</label>
+            <input name="date" type="date" value="${dateVal}">
+          </div>
+          <div class="form-group">
+            <label id="cpLabel">Cliente / Proveedor</label>
+            <input name="counterparty" autocapitalize="words" value="${escape(t.counterparty||'')}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Notas</label>
+          <textarea name="notes" rows="2">${escape(t.notes||'')}</textarea>
+        </div>
+        <button type="submit" class="btn-primary" style="margin-top:6px">${existing?'Guardar cambios':'Registrar movimiento'}</button>
+      </form>
+    `);
+
+    const form = document.getElementById('txForm');
+    const qty = form.querySelector('[name=quantity]');
+    const unit = form.querySelector('[name=unitPrice]');
+    const totalI = document.getElementById('txTotalInput');
+    const cpLabel = document.getElementById('cpLabel');
+    const typeSel = form.querySelector('[name=type]');
+    let totalEdited = !!(existing && t.total!=null);
+    function recalc(){
+      if(totalEdited) return;
+      const q = parseFloat(qty.value)||0;
+      const u = parseFloat(unit.value)||0;
+      totalI.value = (q*u).toFixed(2);
+    }
+    function updateCpLabel(){
+      cpLabel.textContent = typeSel.value==='sale' ? 'Cliente' : 'Proveedor';
+    }
+    qty.addEventListener('input', recalc);
+    unit.addEventListener('input', recalc);
+    totalI.addEventListener('input', ()=>{ totalEdited = true; });
+    typeSel.addEventListener('change', updateCpLabel);
+    updateCpLabel();
+    if(!totalEdited) recalc();
+
+    form.addEventListener('submit', e=>{
+      e.preventDefault();
+      const fd = new FormData(form);
+      const product = (fd.get('product')||'').trim();
+      if(!product){ UI.toast('Indica el producto'); return; }
+      const q = parseFloat(fd.get('quantity'))||0;
+      const u = parseFloat(fd.get('unitPrice'))||0;
+      const tot = fd.get('total')!=='' ? parseFloat(fd.get('total')) : (q*u);
+      const dateStr = fd.get('date');
+      const data = {
+        type: fd.get('type')==='purchase' ? 'purchase' : 'sale',
+        product,
+        quantity: q,
+        unitPrice: u,
+        total: Number(tot.toFixed(2)),
+        date: dateStr ? new Date(dateStr).getTime() : Date.now(),
+        counterparty: (fd.get('counterparty')||'').trim() || null,
+        notes: (fd.get('notes')||'').trim() || null
+      };
+      if(data.product && !DB.settings.productTypes.some(p=>p.toLowerCase()===data.product.toLowerCase())){
+        DB.addProductType(data.product);
+      }
+      if(existing){
+        DB.updateTransaction(existing.id, data);
+        UI.toast('Movimiento actualizado');
+      } else {
+        const nt = DB.addTransaction(data);
+        UI.toast(`${txLabel(data.type)} registrada: ${nt.id}`);
+      }
+      UI.closeModal();
+      App.refresh();
+    });
+  }
+
+  function showTransaction(id){
+    const t = DB.findTransaction(id); if(!t) return;
+    const isSale = t.type==='sale';
+    const sign = isSale ? '+' : '-';
+    UI.openModal(`
+      <h2 style="margin:0 0 4px;font-size:20px">${escape(t.product||'Producto')}</h2>
+      <p class="muted" style="margin:0 0 14px">${escape(t.id)} · <span class="tx-badge ${isSale?'sale':'purchase'}">${txLabel(t.type)}</span></p>
+      <div class="detail-row"><span class="lbl">Cantidad</span><span class="val">${Number(t.quantity||0)}</span></div>
+      <div class="detail-row"><span class="lbl">Precio unit.</span><span class="val">$ ${Number(t.unitPrice||0).toFixed(2)}</span></div>
+      <div class="detail-row"><span class="lbl">Total</span><span class="val tx-amount ${isSale?'sale':'purchase'}">${sign} $ ${Number(t.total||0).toFixed(2)}</span></div>
+      <div class="detail-row"><span class="lbl">Fecha</span><span class="val">${fmtDate(t.date||t.createdAt)}</span></div>
+      <div class="detail-row"><span class="lbl">${isSale?'Cliente':'Proveedor'}</span><span class="val">${t.counterparty?escape(t.counterparty):'<span class="muted">—</span>'}</span></div>
+      <div class="detail-row"><span class="lbl">Notas</span><span class="val">${t.notes?escape(t.notes):'<span class="muted">—</span>'}</span></div>
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn-secondary" id="txEdit">${ICONS.edit} Editar</button>
+        <button class="btn-primary btn-cancel" id="txDel">${ICONS.trash} Eliminar</button>
+      </div>
+    `);
+    document.getElementById('txEdit').onclick = ()=>{ UI.closeModal(); newTransaction(t.type, t); };
+    document.getElementById('txDel').onclick = async ()=>{
+      const ok = await UI.confirmDialog({
+        title:'Eliminar movimiento',
+        message:`¿Eliminar definitivamente ${t.id}? Esta acción no se puede deshacer.`,
+        okText:'Eliminar', cancelText:'Cancelar', danger:true
+      });
+      if(!ok) return;
+      DB.deleteTransaction(id);
+      UI.toast('Movimiento eliminado');
+      UI.closeModal();
+      App.refresh();
+    };
+  }
+
+  // ============= CHOOSER FAB =============
+  function newChooser(){
+    UI.openModal(`
+      <h2 style="margin:0 0 6px;font-size:20px">¿Qué quieres registrar?</h2>
+      <p class="muted small" style="margin:0 0 14px">Elige el tipo de movimiento.</p>
+      <div class="chooser-grid">
+        <button class="chooser-tile repair" data-c="repair">
+          ${ICONS.edit}
+          <span class="ct-title">Reparación</span>
+          <span class="ct-sub">Registrar un nuevo equipo</span>
+        </button>
+        <button class="chooser-tile sale" data-c="sale">
+          ${ICONS.plus}
+          <span class="ct-title">Venta</span>
+          <span class="ct-sub">Producto vendido (ingreso)</span>
+        </button>
+        <button class="chooser-tile purchase" data-c="purchase">
+          ${ICONS.box}
+          <span class="ct-title">Compra</span>
+          <span class="ct-sub">Producto comprado (gasto)</span>
+        </button>
+      </div>
+    `);
+    document.querySelectorAll('[data-c]').forEach(b=>{
+      b.onclick = ()=>{
+        const c = b.dataset.c;
+        UI.closeModal();
+        if(c==='repair') App.go('new');
+        else { App.go('sales'); newTransaction(c); }
+      };
+    });
+  }
+
+  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, newTransaction, newChooser };
 })();

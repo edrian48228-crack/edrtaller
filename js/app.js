@@ -85,12 +85,12 @@ const App = (() => {
     if(!box) return;
     const c = (DB.settings.creator || {});
     const tel = UI.phoneClean(c.phone);
-    const wa = UI.phoneWa(c.whatsapp);
+    const sms = UI.phoneSms(c.phone);
     const ICON_PHONE = '<svg viewBox="0 0 24 24"><path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.58 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .58 3.6 1 1 0 0 1-.25 1l-2.23 2.2z" fill="currentColor"/></svg>';
-    const ICON_WA = '<svg viewBox="0 0 32 32"><path d="M16 3C9 3 3.5 8.5 3.5 15.5c0 2.4.7 4.7 1.9 6.7L3 29l7-1.8a12.5 12.5 0 0 0 6 1.5c7 0 12.5-5.5 12.5-12.5S23 3 16 3zm6.9 17.5c-.3.8-1.7 1.6-2.4 1.6-.6.1-1.4.1-2.3-.1-.5-.2-1.2-.4-2.1-.8-3.7-1.6-6.2-5.3-6.4-5.6-.2-.2-1.5-2-1.5-3.9 0-1.8.9-2.7 1.3-3.1.3-.3.7-.4 1-.4h.7c.2 0 .5 0 .8.6.3.7 1 2.5 1.1 2.6.1.2.2.4 0 .6-.1.2-.2.4-.4.6-.2.2-.4.5-.5.6-.2.2-.4.4-.2.7.2.3 1 1.6 2.1 2.6 1.5 1.3 2.7 1.7 3 1.9.3.1.5.1.7-.1.2-.2.8-.9 1-1.2.2-.3.4-.3.7-.2.3.1 2 1 2.4 1.2.4.2.6.3.7.4 0 .1 0 .8-.3 1.6z" fill="currentColor"/></svg>';
+    const ICON_SMS = '<svg viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 11h2v2H7v-2zm4 0h2v2h-2v-2zm4 0h2v2h-2v-2z" fill="currentColor"/></svg>';
     const parts = [];
-    if(tel) parts.push(`<a class="creator-chip tel" href="tel:${UI.escape(tel)}" title="Llamar al creador">${ICON_PHONE}<span>Tel</span></a>`);
-    if(wa) parts.push(`<a class="creator-chip wa" href="https://wa.me/${UI.escape(wa)}" target="_blank" rel="noopener" title="WhatsApp del creador">${ICON_WA}<span>WhatsApp</span></a>`);
+    if(tel) parts.push(`<a class="creator-chip tel icon-only" href="tel:${UI.escape(tel)}" title="Llamar al creador" aria-label="Llamar">${ICON_PHONE}</a>`);
+    if(sms) parts.push(`<a class="creator-chip sms icon-only" href="sms:${UI.escape(sms)}" title="Enviar SMS al creador" aria-label="SMS">${ICON_SMS}</a>`);
     box.innerHTML = parts.join('');
   }
 
