@@ -33,7 +33,16 @@ const UI = (() => {
       awaiting:'Esperando recogida', completed:'Completada', delivered:'Entregada'
     })[s] || s;
   }
-  // Capitaliza la primera letra de cada palabra (al escribir)
+  // Render del nombre del sistema con segunda palabra en marrón
+  function renderBrand(name){
+    const parts = String(name||'').trim().split(/\s+/);
+    if(parts.length < 2) return escape(parts[0]||'');
+    return `${escape(parts[0])} <span class="w2">${escape(parts.slice(1).join(' '))}</span>`;
+  }
+  // Limpia un número para tel:/wa.me
+  function phoneClean(p){ return String(p||'').replace(/[^\d+]/g,''); }
+  function phoneWa(p){ return String(p||'').replace(/\D/g,''); }
+
   function capitalizeWords(str){
     if(!str) return '';
     return str.replace(/(^|\s)([\p{L}])/gu, (_,sp,ch)=> sp + ch.toLocaleUpperCase('es'));
@@ -50,7 +59,6 @@ const UI = (() => {
       }
     });
   }
-  // Visor de imágenes (lightbox)
   function openImageViewer(srcs, index=0){
     if(typeof srcs === 'string') srcs = [srcs];
     if(!srcs || !srcs.length) return;
@@ -121,36 +129,78 @@ const UI = (() => {
       r.readAsDataURL(blob);
     });
   }
-  // Grabador de audio sencillo
+
+  // Grabador de audio MEJORADO — sin cortes, alta calidad
+  function pickAudioMime(){
+    const types = [
+      'audio/webm;codecs=opus',
+      'audio/ogg;codecs=opus',
+      'audio/mp4;codecs=mp4a.40.2',
+      'audio/webm',
+      'audio/mp4'
+    ];
+    if(!('MediaRecorder' in window)) return '';
+    for(const t of types){
+      try{ if(MediaRecorder.isTypeSupported(t)) return t; }catch(e){}
+    }
+    return '';
+  }
   function createRecorder(){
     let mediaRec = null, chunks = [], stream = null, startedAt = 0, tickTimer = null;
     return {
       async start(onTick){
-        stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        // pedimos buena calidad y sin procesamiento agresivo que entrecorta voz
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            channelCount: 1,
+            sampleRate: 48000,
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          }
+        });
         chunks = [];
-        mediaRec = new MediaRecorder(stream);
-        mediaRec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
-        mediaRec.start();
+        const mime = pickAudioMime();
+        const opts = { audioBitsPerSecond: 128000 };
+        if(mime) opts.mimeType = mime;
+        try{
+          mediaRec = new MediaRecorder(stream, opts);
+        }catch(e){
+          // fallback sin opciones
+          mediaRec = new MediaRecorder(stream);
+        }
+        mediaRec.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
+        // timeslice 1000ms = recoge datos cada segundo (evita pérdidas si algo interrumpe)
+        mediaRec.start(1000);
         startedAt = Date.now();
-        if(onTick){ tickTimer = setInterval(()=> onTick(Math.floor((Date.now()-startedAt)/1000)), 500); }
+        if(onTick){
+          onTick(0);
+          tickTimer = setInterval(()=> onTick(Math.floor((Date.now()-startedAt)/1000)), 500);
+        }
       },
       async stop(){
         clearInterval(tickTimer);
-        return new Promise(res=>{
+        return new Promise((res,rej)=>{
+          if(!mediaRec) return rej(new Error('No recorder'));
           mediaRec.onstop = async ()=>{
-            const blob = new Blob(chunks, { type: mediaRec.mimeType || 'audio/webm' });
-            stream.getTracks().forEach(t=>t.stop());
-            res(await blobToDataUrl(blob));
+            try{
+              const type = mediaRec.mimeType || 'audio/webm';
+              const blob = new Blob(chunks, { type });
+              if(stream) stream.getTracks().forEach(t=>t.stop());
+              res(await blobToDataUrl(blob));
+            }catch(e){ rej(e); }
           };
-          mediaRec.stop();
+          // mediaRec.requestData() opcional, stop() emite el último chunk
+          try{ mediaRec.stop(); }catch(e){ rej(e); }
         });
       },
       cancel(){
         clearInterval(tickTimer);
         try{ mediaRec && mediaRec.state!=='inactive' && mediaRec.stop(); }catch(e){}
         try{ stream && stream.getTracks().forEach(t=>t.stop()); }catch(e){}
-      }
+      },
+      isRecording(){ return mediaRec && mediaRec.state==='recording'; }
     };
   }
-  return { $, toast, openModal, closeModal, escape, fmtDate, fmtDateTime, fmtDateInput, statusLabel, resizeImage, blobToDataUrl, createRecorder, capitalizeWords, attachAutoCapitalize, openImageViewer };
+  return { $, toast, openModal, closeModal, escape, fmtDate, fmtDateTime, fmtDateInput, statusLabel, resizeImage, blobToDataUrl, createRecorder, capitalizeWords, attachAutoCapitalize, openImageViewer, renderBrand, phoneClean, phoneWa };
 })();

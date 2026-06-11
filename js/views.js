@@ -18,41 +18,108 @@ const Views = (() => {
     cloud: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 18H6a4 4 0 0 1-.5-7.97A6 6 0 0 1 17 9a4 4 0 0 1 2 9z"/></svg>',
     save: '<svg viewBox="0 0 24 24" class="ico"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/></svg>',
     phone: '<svg viewBox="0 0 24 24" class="ico"><path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.58 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .58 3.6 1 1 0 0 1-.25 1l-2.23 2.2z"/></svg>',
-    upload: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 16V10H5l7-7 7 7h-4v6H9zm-4 4v-2h14v2H5z"/></svg>'
+    wa: '<svg viewBox="0 0 32 32" class="ico"><path d="M16 3C9 3 3.5 8.5 3.5 15.5c0 2.4.7 4.7 1.9 6.7L3 29l7-1.8a12.5 12.5 0 0 0 6 1.5c7 0 12.5-5.5 12.5-12.5S23 3 16 3zm6.9 17.5c-.3.8-1.7 1.6-2.4 1.6-.6.1-1.4.1-2.3-.1-.5-.2-1.2-.4-2.1-.8-3.7-1.6-6.2-5.3-6.4-5.6-.2-.2-1.5-2-1.5-3.9 0-1.8.9-2.7 1.3-3.1.3-.3.7-.4 1-.4h.7c.2 0 .5 0 .8.6.3.7 1 2.5 1.1 2.6.1.2.2.4 0 .6-.1.2-.2.4-.4.6-.2.2-.4.5-.5.6-.2.2-.4.4-.2.7.2.3 1 1.6 2.1 2.6 1.5 1.3 2.7 1.7 3 1.9.3.1.5.1.7-.1.2-.2.8-.9 1-1.2.2-.3.4-.3.7-.2.3.1 2 1 2.4 1.2.4.2.6.3.7.4 0 .1 0 .8-.3 1.6z"/></svg>',
+    upload: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 16V10H5l7-7 7 7h-4v6H9zm-4 4v-2h14v2H5z"/></svg>',
+    close: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>',
+    cancel: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5 14.6L16.6 18 12 13.4 7.4 18 6 16.6 10.6 12 6 7.4 7.4 6 12 10.6 16.6 6 18 7.4 13.4 12 18 16.6z"/></svg>'
   };
 
-  // Estados disponibles (sin "awaiting" — quitado a pedido)
   const STATUS_KEYS = ['pending','in_progress','completed','delivered'];
+  const FILTERS = [
+    {k:'all',label:'Todas'},
+    {k:'pending',label:'Pendientes'},
+    {k:'in_progress',label:'En proceso'},
+    {k:'completed',label:'Completadas'},
+    {k:'delivered',label:'Entregadas'},
+    {k:'cancelled',label:'Canceladas'}
+  ];
 
   function emptyState(t,s){
     return `<div class="empty">${ICONS.box.replace('class="ico"','class="ico lg"')}<h3>${escape(t)}</h3><p>${escape(s)}</p></div>`;
   }
 
+  // Cabecera con líneas (reutilizable para listas y formulario)
+  function sectionDivider(label, count){
+    const c = count!=null ? `<span class="dg-count">${count}</span>` : '';
+    return `<div class="group-divider">
+      <span class="dg-line"></span>
+      <span class="dg-label">${escape(label)}</span>
+      ${c}
+      <span class="dg-line right"></span>
+    </div>`;
+  }
+
   function repairCard(r){
-    const cover = (r.devicePhotos && r.devicePhotos[0]) || r.devicePhoto;
-    const thumb = cover ? `<img src="${cover}" alt="">` : ICONS.device;
+    // Foto del cliente como thumb (no la del equipo)
+    const cover = r.clientPhoto;
+    const thumb = cover ? `<img src="${cover}" alt="">` : ICONS.person;
+    const phones = (r.clientPhones && r.clientPhones.length)
+      ? r.clientPhones.filter(Boolean)
+      : (r.clientPhone ? [r.clientPhone] : []);
+    let phoneHtml = '';
+    if(phones.length){
+      if(phones.length === 1){
+        const tel = UI.phoneClean(phones[0]);
+        const wa = UI.phoneWa(phones[0]);
+        phoneHtml = `<div class="card-phones">
+          <a class="mini-action call" href="tel:${escape(tel)}" data-stop="1">${ICONS.phone}<span>${escape(phones[0])}</span></a>
+          <a class="mini-action wa" href="https://wa.me/${escape(wa)}" target="_blank" rel="noopener" data-stop="1">${ICONS.wa}<span>WhatsApp</span></a>
+        </div>`;
+      } else {
+        phoneHtml = `<div class="card-phones">
+          <button class="mini-action call" data-pick-phone="${escape(r.id)}" data-stop="1">${ICONS.phone}<span>${phones.length} teléfonos</span></button>
+        </div>`;
+      }
+    }
     return `
       <div class="repair-card" data-id="${r.id}">
         <div class="thumb">${thumb}</div>
         <div class="repair-info">
-          <h3>${escape(r.device||'Equipo')} ${r.brand?'· '+escape(r.brand):''}</h3>
-          <p>${escape(r.clientName||'Cliente')} · ${escape(r.id)}</p>
+          <h3>${escape(r.clientName||'Cliente')}</h3>
+          <p>${escape(r.device||'Equipo')}${r.brand?' · '+escape(r.brand):''} · ${escape(r.id)}</p>
           <span class="status ${r.status}">${statusLabel(r.status)}</span>
+          ${phoneHtml}
         </div>
       </div>`;
   }
   function bindRepairCards(){
     view().querySelectorAll('.repair-card').forEach(c=>{
-      c.addEventListener('click', ()=> showRepair(c.dataset.id));
+      c.addEventListener('click', e=>{
+        // No abrir detalle si se pulsó un botón de teléfono dentro de la tarjeta
+        if(e.target.closest('[data-stop]')) return;
+        showRepair(c.dataset.id);
+      });
+    });
+    view().querySelectorAll('[data-pick-phone]').forEach(b=>{
+      b.addEventListener('click', e=>{
+        e.preventDefault(); e.stopPropagation();
+        openPhonePicker(b.dataset.pickPhone);
+      });
     });
   }
 
-  // Agrupación elegante por fecha
+  function openPhonePicker(id){
+    const r = DB.findRepair(id); if(!r) return;
+    const phones = (r.clientPhones||[]).filter(Boolean);
+    const rows = phones.map(p=>{
+      const tel = UI.phoneClean(p); const wa = UI.phoneWa(p);
+      return `<div class="pp-row">
+        <span class="pp-num">${escape(p)}</span>
+        <div class="pp-actions">
+          <a class="call" href="tel:${escape(tel)}" title="Llamar">${ICONS.phone}</a>
+          <a class="wa" href="https://wa.me/${escape(wa)}" target="_blank" rel="noopener" title="WhatsApp">${ICONS.wa}</a>
+        </div>
+      </div>`;
+    }).join('');
+    UI.openModal(`<h2 style="margin:0 0 4px;font-size:18px">${escape(r.clientName||'Cliente')}</h2>
+      <p class="muted small" style="margin:0 0 8px">Elige un número para llamar o enviar WhatsApp.</p>
+      <div class="phone-picker">${rows}</div>`);
+  }
+
   function groupByDate(list){
     const now = new Date();
     const today0 = new Date(now); today0.setHours(0,0,0,0);
     const yest0 = new Date(today0); yest0.setDate(yest0.getDate()-1);
-    // inicio de la semana (lunes)
     const wd = (today0.getDay()+6)%7;
     const week0 = new Date(today0); week0.setDate(week0.getDate()-wd);
     const month0 = new Date(today0.getFullYear(), today0.getMonth(), 1);
@@ -102,7 +169,7 @@ const Views = (() => {
         <div class="stat-card pending" data-go="repairs:pending">${ICONS.clock}<div class="stat-num">${pending}</div><div class="stat-lbl">Pendientes</div></div>
         <div class="stat-card success" data-go="repairs:completed">${ICONS.check}<div class="stat-num">${completed}</div><div class="stat-lbl">Completadas</div></div>
       </div>
-      <div class="section-title">Recientes</div>
+      ${sectionDivider('Recientes', recent.length||0)}
       ${recent.length ? recent.map(repairCard).join('') : emptyState('Aún no hay reparaciones','Pulsa el botón + para registrar la primera')}
     `;
     view().querySelectorAll('[data-go]').forEach(el=>{
@@ -116,34 +183,28 @@ const Views = (() => {
   // ============= LISTA =============
   function repairsList(filter){
     let list = DB.repairs;
-    const filters = [
-      {k:'all',label:'Todas'},{k:'pending',label:'Pendientes'},{k:'in_progress',label:'En proceso'},
-      {k:'completed',label:'Completadas'},{k:'delivered',label:'Entregadas'}
-    ];
     const active = filter || 'all';
     if(active!=='all') list = list.filter(r=>r.status===active);
 
-    // siempre agrupar por fecha (elegante)
     const groups = groupByDate(list);
     const grouped = groups.map(g=>`
-      <div class="date-group-header">
-        <span class="dg-line"></span>
-        <span class="dg-label">${escape(g.label)}</span>
-        <span class="dg-count">${g.items.length}</span>
-      </div>
+      ${sectionDivider(g.label, g.items.length)}
       ${g.items.map(repairCard).join('')}
     `).join('');
 
+    const opts = FILTERS.map(f=>`<option value="${f.k}" ${f.k===active?'selected':''}>${f.label}</option>`).join('');
+
     view().innerHTML = `
-      <div class="chips">${filters.map(f=>`<button class="chip ${f.k===active?'active':''}" data-f="${f.k}">${f.label}</button>`).join('')}</div>
+      <div class="select-elegant">
+        <select id="repairsFilter" aria-label="Filtrar reparaciones">${opts}</select>
+      </div>
       ${list.length ? grouped : emptyState('Sin reparaciones','No hay registros en esta categoría')}
     `;
-    view().querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>repairsList(c.dataset.f)));
+    document.getElementById('repairsFilter').addEventListener('change', e=> repairsList(e.target.value));
     bindRepairCards();
   }
 
   // ============= NUEVA / EDITAR =============
-  // Nuevo "Sin datos" elegante: botón pill en la esquina del campo
   function naWrap(fieldKey, label, inputHtml, naFields){
     const isNa = naFields.includes(fieldKey);
     return `<div class="form-group na-group ${isNa?'is-na':''}" data-na-group="${fieldKey}">
@@ -171,25 +232,26 @@ const Views = (() => {
     const deviceOptions = DB.settings.deviceTypes.map(d=>`<option value="${escape(d)}">`).join('');
 
     view().innerHTML = `
-      <h2 style="margin:0 0 16px;font-size:20px">${existing?'Editar reparación':'Nueva reparación'}</h2>
+      <button type="button" class="form-close" id="formCloseTop" title="Cerrar">${ICONS.close}</button>
+
+      <h2 style="margin:0 0 16px;font-size:20px;padding-right:50px">${existing?'Editar reparación':'Nueva reparación'}</h2>
       <form id="repairForm" novalidate>
 
-        <div class="section-title">Foto del cliente</div>
-        <div class="photo-grid single">
-          <label class="photo-input ${photos.client?'has-img':''}" id="clientPhotoBox"></label>
-        </div>
-
-        <div class="section-title">Fotos del equipo</div>
-        <div id="devicePhotos" class="multi-photo-grid"></div>
-        <label class="photo-add-btn">
-          ${ICONS.plus}<span>Añadir foto del equipo</span>
-          <input type="file" accept="image/*" capture="environment" id="addDevicePhoto" multiple>
-        </label>
-
-        <div class="section-title">Cliente</div>
-        <div class="form-group">
-          <label>Nombre del cliente *</label>
-          <input name="clientName" id="clientNameInput" required autocapitalize="words" value="${escape(r.clientName||'')}">
+        ${sectionDivider('Cliente')}
+        <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+          <div style="flex:0 0 auto">
+            <div class="photo-grid single compact">
+              <label class="photo-input ${photos.client?'has-img':''}" id="clientPhotoBox"></label>
+            </div>
+            <!-- Grabador justo debajo de la foto del cliente -->
+            <div class="client-audio-inline" id="audioBox"></div>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <div class="form-group">
+              <label>Nombre del cliente *</label>
+              <input name="clientName" id="clientNameInput" required autocapitalize="words" value="${escape(r.clientName||'')}">
+            </div>
+          </div>
         </div>
 
         <div class="form-group na-group ${naFields.includes('clientPhones')?'is-na':''}" data-na-group="clientPhones">
@@ -210,7 +272,7 @@ const Views = (() => {
         ${naWrap('clientAddress','Dirección',`<textarea name="clientAddress" rows="2">${escape(r.clientAddress||'')}</textarea>`,naFields)}
         ${naWrap('clientIdNumber','Nº de identidad',`<input name="clientIdNumber" value="${escape(r.clientIdNumber||'')}">`,naFields)}
 
-        <div class="section-title">Equipo</div>
+        ${sectionDivider('Equipo')}
         <div class="form-group">
           <label>Equipo *</label>
           <input name="device" list="deviceTypesList" required placeholder="Selecciona o escribe" value="${escape(r.device||'')}">
@@ -221,17 +283,28 @@ const Views = (() => {
         ${naWrap('serial','Nº de serie',`<input name="serial" value="${escape(r.serial||'')}">`,naFields)}
 
         <div class="form-group">
+          <label>Fotos del equipo</label>
+          <div id="devicePhotos" class="multi-photo-grid"></div>
+          <label class="photo-add-btn">
+            ${ICONS.plus}<span>Añadir foto del equipo</span>
+            <input type="file" accept="image/*" capture="environment" id="addDevicePhoto" multiple>
+          </label>
+        </div>
+
+        <div class="form-group">
           <label>Falla reportada *</label>
           <textarea name="issue" required>${escape(r.issue||'')}</textarea>
         </div>
 
-        <div class="section-title">Detalles</div>
+        ${sectionDivider('Detalles')}
         <div class="form-row">
           <div class="form-group">
             <label>Estado</label>
-            <select name="status">
-              ${STATUS_KEYS.map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}
-            </select>
+            <div class="select-elegant">
+              <select name="status">
+                ${STATUS_KEYS.map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}
+              </select>
+            </div>
           </div>
           <div class="form-group"><label>Fecha entrega</label><input name="dueDate" type="date" value="${fmtDateInput(r.dueDate)}"></div>
         </div>
@@ -239,17 +312,37 @@ const Views = (() => {
         ${naWrap('deposit','Anticipo',`<input name="deposit" type="number" step="0.01" inputmode="decimal" value="${r.deposit!=null?r.deposit:''}">`,naFields)}
         ${naWrap('notes','Notas',`<textarea name="notes">${escape(r.notes||'')}</textarea>`,naFields)}
 
-        <div class="section-title">Audio: cliente aceptando la reparación</div>
-        <div class="admin-card" id="audioBox"></div>
-
-        <button type="submit" class="btn-primary">${existing?'Guardar cambios':'Registrar reparación'}</button>
+        <button type="submit" class="btn-primary" style="margin-top:8px">${existing?'Guardar cambios':'Registrar reparación'}</button>
+        <button type="button" class="btn-secondary btn-danger" id="cancelRepairBtn" style="margin-top:10px;color:#fff">
+          ${ICONS.cancel} Cancelar reparación
+        </button>
       </form>
     `;
 
-    // Auto-capitalización del nombre
+    // Cerrar (arriba)
+    document.getElementById('formCloseTop').onclick = ()=>{
+      try{ if(rec) rec.cancel(); }catch(e){}
+      App.go(existing ? 'repairs' : 'dashboard');
+    };
+    // Cancelar reparación (abajo)
+    document.getElementById('cancelRepairBtn').onclick = ()=>{
+      const msg = existing
+        ? '¿Cancelar esta reparación? Se marcará como cancelada.'
+        : '¿Cancelar y salir? Se perderán los datos no guardados.';
+      if(!confirm(msg)) return;
+      try{ if(rec) rec.cancel(); }catch(e){}
+      if(existing){
+        DB.updateRepair(existing.id, { status: 'cancelled' });
+        UI.toast('Reparación cancelada');
+        App.go('repairs');
+      } else {
+        App.go('dashboard');
+      }
+    };
+
     UI.attachAutoCapitalize(document.getElementById('clientNameInput'));
 
-    // ---- Teléfonos múltiples ----
+    // Teléfonos
     function renderPhones(){
       const wrap = document.getElementById('phonesList');
       wrap.innerHTML = phones.map((p,i)=>`
@@ -268,7 +361,7 @@ const Views = (() => {
     renderPhones();
     document.getElementById('addPhoneBtn').onclick = ()=>{ phones.push(''); renderPhones(); };
 
-    // ---- N/A toggles (botón pill) ----
+    // N/A toggles
     function applyNaState(group, isNa){
       group.classList.toggle('is-na', isNa);
       const btn = group.querySelector('.na-pill');
@@ -289,7 +382,7 @@ const Views = (() => {
       });
     });
 
-    // ---- fotos del equipo (multi) ----
+    // Fotos equipo
     function renderDevicePhotos(){
       const wrap = document.getElementById('devicePhotos');
       if(!photos.device.length){ wrap.innerHTML = '<p class="muted small">Aún no hay fotos del equipo.</p>'; return; }
@@ -315,13 +408,13 @@ const Views = (() => {
       renderDevicePhotos();
     });
 
-    // ---- foto cliente ----
+    // Foto cliente
     function renderClient(){
       const box = document.getElementById('clientPhotoBox');
       box.classList.toggle('has-img', !!photos.client);
       box.innerHTML = photos.client
         ? `<img src="${photos.client}" id="clientPhotoImg"><input type="file" accept="image/*" capture="user" id="clientPhotoInput"><button type="button" class="photo-remove" id="clientPhotoRm">${ICONS.trash}</button>`
-        : `${ICONS.person}<span>Foto del cliente</span><input type="file" accept="image/*" capture="user" id="clientPhotoInput">`;
+        : `${ICONS.person}<span>Foto cliente</span><input type="file" accept="image/*" capture="user" id="clientPhotoInput">`;
       const inp = document.getElementById('clientPhotoInput');
       if(inp) inp.onchange = async e=>{
         const f = e.target.files[0]; if(!f) return;
@@ -334,99 +427,98 @@ const Views = (() => {
     }
     renderClient();
 
-    // ---- audio ----
+    // AUDIO (bajo la foto del cliente)
     let rec = null;
-    let autoStartAttempted = false;
     function renderAudio(){
       const box = document.getElementById('audioBox');
       if(acceptAudio){
-        box.innerHTML = `<audio controls src="${acceptAudio}" style="width:100%"></audio>
-          <button type="button" class="btn-secondary" id="rmAudio" style="margin-top:10px">${ICONS.trash} Eliminar audio</button>`;
+        box.innerHTML = `
+          <p class="muted small" style="margin:0">Audio de aceptación</p>
+          <audio controls src="${acceptAudio}" style="width:100%"></audio>
+          <button type="button" class="btn-secondary btn-inline" id="rmAudio">${ICONS.trash} Eliminar</button>`;
         document.getElementById('rmAudio').onclick = ()=>{ acceptAudio = null; renderAudio(); };
       } else {
         box.innerHTML = `
-          <p class="muted small">Graba al cliente diciendo que acepta la reparación. Opcional.</p>
+          <p class="muted small" style="margin:0">Grabar al cliente aceptando</p>
           <div class="audio-controls">
-            <button type="button" class="btn-primary btn-inline" id="recStart">${ICONS.mic} Grabar</button>
+            <button type="button" class="btn-primary btn-inline" id="recStart">${ICONS.mic} Empezar a grabar</button>
             <button type="button" class="btn-secondary btn-inline" id="recStop" style="display:none">${ICONS.stop} Detener</button>
             <span id="recTimer" class="muted small"></span>
+            <span id="recDot" class="rec-pulse" style="display:none"></span>
           </div>
-          <label class="file-pill" for="audioFile">${ICONS.upload}<span>Subir archivo de audio</span></label>
+          <label class="file-pill" for="audioFile">${ICONS.upload}<span>Subir archivo</span></label>
           <input type="file" accept="audio/*" id="audioFile" hidden>
         `;
         const recStart = document.getElementById('recStart');
         const recStop = document.getElementById('recStop');
-        async function startRec(){
+        const recDot = document.getElementById('recDot');
+        recStart.onclick = async ()=>{
           try{
             rec = UI.createRecorder();
-            await rec.start(s=>{ const t = document.getElementById('recTimer'); if(t) t.textContent = `Grabando... ${s}s`; });
+            await rec.start(s=>{ const t = document.getElementById('recTimer'); if(t) t.textContent = `${s}s`; });
             recStart.style.display = 'none';
             recStop.style.display = '';
-            return true;
-          }catch(e){ return false; }
-        }
-        recStart.onclick = async ()=>{
-          if(!(await startRec())) UI.toast('No se pudo acceder al micrófono');
+            recDot.style.display = '';
+          }catch(e){ UI.toast('No se pudo acceder al micrófono'); }
         };
         recStop.onclick = async ()=>{
-          try{ acceptAudio = await rec.stop(); renderAudio(); }catch(e){ UI.toast('Error al detener'); }
+          try{
+            acceptAudio = await rec.stop();
+            rec = null;
+            renderAudio();
+          }catch(e){ UI.toast('Error al detener'); }
         };
         document.getElementById('audioFile').onchange = async e=>{
           const f = e.target.files[0]; if(!f) return;
           acceptAudio = await UI.blobToDataUrl(f); renderAudio();
         };
-
-        // Auto-iniciar grabación al abrir Nueva Reparación
-        if(!existing && !autoStartAttempted){
-          autoStartAttempted = true;
-          setTimeout(async ()=>{
-            const ok = await startRec();
-            if(!ok){
-              // permiso denegado u otro error: queda listo para iniciar manualmente
-              UI.toast('Pulsa Grabar para iniciar el audio');
-            }
-          }, 250);
-        }
       }
     }
     renderAudio();
 
-    // ---- submit ----
+    // Submit
     document.getElementById('repairForm').addEventListener('submit', e=>{
       e.preventDefault();
-      const fd = new FormData(e.target);
-      const data = {};
-      ['clientName','clientEmail','clientAddress','clientIdNumber','device','brand','model','serial','issue','status','notes'].forEach(k=>{
-        const v = fd.get(k);
-        data[k] = naFields.includes(k) ? null : (v != null ? String(v).trim() || null : null);
-      });
-      data.clientName = (fd.get('clientName')||'').trim(); // requerido
-      data.device = fd.get('device');
-      data.issue = fd.get('issue');
-      data.status = fd.get('status');
-      // Teléfonos
-      const cleanPhones = naFields.includes('clientPhones') ? [] : phones.map(p=>String(p||'').trim()).filter(Boolean);
-      data.clientPhones = cleanPhones;
-      data.clientPhone = cleanPhones[0] || null; // compat
-      const due = fd.get('dueDate');
-      data.dueDate = due ? new Date(due).getTime() : null;
-      const price = fd.get('price'); const dep = fd.get('deposit');
-      data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
-      data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
-      data.devicePhotos = photos.device;
-      data.devicePhoto = photos.device[0] || null;
-      data.clientPhoto = photos.client;
-      data.acceptAudio = acceptAudio;
-      data.naFields = naFields;
+      // Si está grabando, detenemos primero y guardamos
+      const doSave = ()=>{
+        const fd = new FormData(e.target);
+        const data = {};
+        ['clientName','clientEmail','clientAddress','clientIdNumber','device','brand','model','serial','issue','status','notes'].forEach(k=>{
+          const v = fd.get(k);
+          data[k] = naFields.includes(k) ? null : (v != null ? String(v).trim() || null : null);
+        });
+        data.clientName = (fd.get('clientName')||'').trim();
+        data.device = fd.get('device');
+        data.issue = fd.get('issue');
+        data.status = fd.get('status');
+        const cleanPhones = naFields.includes('clientPhones') ? [] : phones.map(p=>String(p||'').trim()).filter(Boolean);
+        data.clientPhones = cleanPhones;
+        data.clientPhone = cleanPhones[0] || null;
+        const due = fd.get('dueDate');
+        data.dueDate = due ? new Date(due).getTime() : null;
+        const price = fd.get('price'); const dep = fd.get('deposit');
+        data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
+        data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
+        data.devicePhotos = photos.device;
+        data.devicePhoto = photos.device[0] || null;
+        data.clientPhoto = photos.client;
+        data.acceptAudio = acceptAudio;
+        data.naFields = naFields;
 
-      if(existing){
-        DB.updateRepair(existing.id, data);
-        UI.toast('Reparación actualizada');
+        if(existing){
+          DB.updateRepair(existing.id, data);
+          UI.toast('Reparación actualizada');
+        } else {
+          const nr = DB.addRepair(data);
+          UI.toast('Reparación registrada: '+nr.id);
+        }
+        App.go('repairs');
+      };
+      if(rec && rec.isRecording()){
+        rec.stop().then(url=>{ acceptAudio = url; rec = null; doSave(); }).catch(()=> doSave());
       } else {
-        const nr = DB.addRepair(data);
-        UI.toast('Reparación registrada: '+nr.id);
+        doSave();
       }
-      App.go('repairs');
     });
   }
 
@@ -437,7 +529,6 @@ const Views = (() => {
     const photos = (r.devicePhotos && r.devicePhotos.length) ? r.devicePhotos : (r.devicePhoto?[r.devicePhoto]:[]);
     const naFields = r.naFields || [];
 
-    // Devuelve HTML seguro: o "Sin datos" estilizado, o el valor escapado, o em-dash
     function valHtml(key, transform){
       if(naFields.includes(key)) return '<span class="na-tag">Sin datos</span>';
       let v = r[key];
@@ -445,7 +536,6 @@ const Views = (() => {
       return transform ? transform(v) : escape(v);
     }
 
-    // Teléfonos
     const phones = (r.clientPhones && r.clientPhones.length) ? r.clientPhones : (r.clientPhone?[r.clientPhone]:[]);
     let phonesHtml;
     if(naFields.includes('clientPhones') || naFields.includes('clientPhone')){
@@ -453,19 +543,22 @@ const Views = (() => {
     } else if(!phones.length){
       phonesHtml = '<span class="muted">—</span>';
     } else {
-      phonesHtml = `<div class="phones-display">${phones.map(p=>`
-        <a class="phone-link" href="tel:${escape(p)}">${ICONS.phone}<span>${escape(p)}</span></a>
-      `).join('')}</div>`;
+      phonesHtml = `<div class="phones-display">${phones.map(p=>{
+        const tel = UI.phoneClean(p); const wa = UI.phoneWa(p);
+        return `<div style="display:flex;gap:6px">
+          <a class="phone-link" href="tel:${escape(tel)}">${ICONS.phone}<span>${escape(p)}</span></a>
+          <a class="phone-link" href="https://wa.me/${escape(wa)}" target="_blank" rel="noopener" style="background:linear-gradient(135deg,rgba(76,201,115,.2),rgba(31,122,58,.15));border-color:rgba(76,201,115,.4);color:#a8e3b3">${ICONS.wa}</a>
+        </div>`;
+      }).join('')}</div>`;
     }
 
     const html = `
-      <h2 style="margin:0 0 4px;font-size:20px">${escape(r.device||'Equipo')}</h2>
-      <p class="muted" style="margin:0 0 14px">${escape(r.id)} · <span class="status ${r.status}">${statusLabel(r.status)}</span></p>
+      <h2 style="margin:0 0 4px;font-size:20px">${escape(r.clientName||'Cliente')}</h2>
+      <p class="muted" style="margin:0 0 14px">${escape(r.id)} · ${escape(r.device||'Equipo')} · <span class="status ${r.status}">${statusLabel(r.status)}</span></p>
 
+      ${r.clientPhoto ? `<div class="client-photo-small"><img src="${r.clientPhoto}" id="detailClientPhoto"></div>` : ''}
       ${photos.length ? `<div class="detail-photo-strip">${photos.map((p,i)=>`<img src="${p}" data-view-idx="${i}">`).join('')}</div>` : ''}
-      ${r.clientPhoto ? `<div class="detail-photos"><div class="thumb-big"><img src="${r.clientPhoto}" id="detailClientPhoto"></div></div>` : ''}
 
-      <div class="detail-row"><span class="lbl">Cliente</span><span class="val">${escape(r.clientName||'—')}</span></div>
       <div class="detail-row"><span class="lbl">Teléfono</span><span class="val">${phonesHtml}</span></div>
       <div class="detail-row"><span class="lbl">Email</span><span class="val">${valHtml('clientEmail', v=>`<a href="mailto:${escape(v)}" class="link">${escape(v)}</a>`)}</span></div>
       <div class="detail-row"><span class="lbl">Dirección</span><span class="val">${valHtml('clientAddress')}</span></div>
@@ -483,9 +576,9 @@ const Views = (() => {
       ${r.acceptAudio ? `<div class="section-title">Aceptación del cliente</div><audio controls src="${r.acceptAudio}" style="width:100%"></audio>` : ''}
 
       <div class="section-title">Cambiar estado</div>
-      <div class="form-group">
+      <div class="select-elegant">
         <select id="quickStatus">
-          ${STATUS_KEYS.map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}
+          ${['pending','in_progress','completed','delivered','cancelled'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
         </select>
       </div>
       <div class="btn-row">
@@ -495,7 +588,6 @@ const Views = (() => {
     `;
     UI.openModal(html);
 
-    // Lightbox para fotos
     document.querySelectorAll('[data-view-idx]').forEach(img=>{
       img.onclick = ()=> UI.openImageViewer(photos, +img.dataset.viewIdx);
     });
@@ -526,7 +618,13 @@ const Views = (() => {
     function render(q){
       const list = DB.search(q);
       results.innerHTML = list.length ? list.map(repairCard).join('') : emptyState('Sin resultados','Prueba con otro término');
-      results.querySelectorAll('.repair-card').forEach(c=>c.addEventListener('click',()=>showRepair(c.dataset.id)));
+      results.querySelectorAll('.repair-card').forEach(c=>c.addEventListener('click',e=>{
+        if(e.target.closest('[data-stop]')) return;
+        showRepair(c.dataset.id);
+      }));
+      results.querySelectorAll('[data-pick-phone]').forEach(b=>{
+        b.addEventListener('click', e=>{ e.preventDefault(); e.stopPropagation(); openPhonePicker(b.dataset.pickPhone); });
+      });
     }
     render('');
     input.addEventListener('input', e=>render(e.target.value));
@@ -536,6 +634,7 @@ const Views = (() => {
   function admin(){
     const s = DB.settings;
     const g = s.github;
+    const c = s.creator || {phone:'',whatsapp:''};
     const hasLocal = typeof LocalFile !== 'undefined' && LocalFile.hasHandle();
     const localSupported = typeof LocalFile !== 'undefined' && LocalFile.isSupported();
 
@@ -544,8 +643,23 @@ const Views = (() => {
 
       <div class="admin-card">
         <h3>Nombre del sistema</h3>
-        <p>Aparece en la cabecera y pantalla de inicio</p>
-        <input id="appNameInput" value="${escape(s.appName)}">
+        <p>La segunda palabra se mostrará en color marrón automáticamente.</p>
+        <input id="appNameInput" class="input-pill" value="${escape(s.appName)}">
+      </div>
+
+      <div class="admin-card">
+        <h3>Datos del creador (opcional)</h3>
+        <p>Se muestran como botones en la cabecera para llamar o enviar WhatsApp.</p>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Teléfono</label>
+            <input id="creatorPhone" type="tel" inputmode="tel" placeholder="+53 5555 5555" value="${escape(c.phone||'')}">
+          </div>
+          <div class="form-group">
+            <label>WhatsApp</label>
+            <input id="creatorWa" type="tel" inputmode="tel" placeholder="+5355555555" value="${escape(c.whatsapp||'')}">
+          </div>
+        </div>
       </div>
 
       <div class="admin-card">
@@ -567,7 +681,7 @@ const Views = (() => {
           <h3 style="margin:0">${ICONS.cloud} Sincronización GitHub</h3>
           <label class="switch"><input type="checkbox" id="ghEnabled" ${g.enabled?'checked':''}><span class="slider"></span></label>
         </div>
-        <p>Sube/baja un JSON con todos tus datos usando la API de GitHub.</p>
+        <p>Sube/baja un JSON con todos tus datos (incluye fotos y audios embebidos — al moverlo nada se pierde).</p>
         <div class="form-row">
           <div class="form-group"><label>Usuario / org</label><input id="ghUser" value="${escape(g.user)}" placeholder="tu-usuario"></div>
           <div class="form-group"><label>Repositorio</label><input id="ghRepo" value="${escape(g.repo)}" placeholder="taller-datos"></div>
@@ -591,7 +705,7 @@ const Views = (() => {
       ${typeof LocalFile !== 'undefined' ? `
       <div class="admin-card">
         <h3>${ICONS.save} Guardar JSON en una ubicación</h3>
-        <p>Elige una carpeta/archivo del dispositivo. El sistema escribirá ahí automáticamente cuando guardes cambios.</p>
+        <p>Elige un archivo local. Las fotos y audios viajan dentro del JSON — al mover ese archivo nunca pierdes información.</p>
         ${localSupported ? `
           <div class="btn-row">
             <button class="btn-secondary" id="pickLoc">${hasLocal?'Cambiar ubicación':'Elegir ubicación'}</button>
@@ -604,7 +718,7 @@ const Views = (() => {
 
       <div class="admin-card">
         <h3>Copia local (manual)</h3>
-        <p>Exporta o importa el JSON manualmente</p>
+        <p>Exporta o importa el JSON manualmente. Contiene fotos + audios embebidos.</p>
         <div class="btn-row">
           <button class="btn-secondary" id="exportBtn">Exportar JSON</button>
           <button class="btn-secondary" id="importBtn">Importar JSON</button>
@@ -632,10 +746,19 @@ const Views = (() => {
 
     document.getElementById('appNameInput').addEventListener('change', e=>{
       DB.updateSettings({ appName: e.target.value.trim() || 'Taller' });
-      document.getElementById('appTitle').textContent = DB.settings.appName;
-      document.title = DB.settings.appName;
+      App.applyBrand();
       UI.toast('Nombre actualizado');
     });
+    function saveCreator(){
+      DB.updateCreator({
+        phone: document.getElementById('creatorPhone').value.trim(),
+        whatsapp: document.getElementById('creatorWa').value.trim()
+      });
+      App.applyBrand();
+    }
+    document.getElementById('creatorPhone').addEventListener('change', saveCreator);
+    document.getElementById('creatorWa').addEventListener('change', saveCreator);
+
     document.getElementById('reqPass').addEventListener('change', e=>{
       DB.updateSettings({ requirePassword: e.target.checked });
       UI.toast(e.target.checked?'Contraseña activada':'Contraseña desactivada');

@@ -1,7 +1,7 @@
 // Almacén con localStorage + migración compatible hacia adelante.
 const DB = (() => {
   const KEY = 'taller_db_v1';
-  const SCHEMA_VERSION = 4;
+  const SCHEMA_VERSION = 5;
   const DEFAULT_DEVICES = [
     'Televisor','Smart TV','Monitor','Laptop','PC de escritorio','Tablet',
     'Teléfono móvil','Impresora','Microondas','Lavadora','Refrigerador',
@@ -15,6 +15,10 @@ const DB = (() => {
       requirePassword: true,
       passwordHash: null,
       deviceTypes: DEFAULT_DEVICES.slice(),
+      creator: {
+        phone: '',
+        whatsapp: ''
+      },
       github: {
         enabled: false,
         user: '',
@@ -52,13 +56,10 @@ const DB = (() => {
     return target;
   }
   function migrate(){
-    // v1 -> v2+: devicePhoto (string) -> devicePhotos (array)
-    // v3 -> v4: clientPhone (string) -> clientPhones (array)
     let changed = false;
     for(const r of data.repairs){
       if(r.devicePhoto && !r.devicePhotos){
-        r.devicePhotos = [r.devicePhoto];
-        changed = true;
+        r.devicePhotos = [r.devicePhoto]; changed = true;
       }
       if(!r.devicePhotos) r.devicePhotos = [];
       if(!r.naFields) r.naFields = [];
@@ -68,13 +69,14 @@ const DB = (() => {
       }
       if(r.clientAddress === undefined) r.clientAddress = null;
       if(r.clientIdNumber === undefined) r.clientIdNumber = null;
-      // Migra estado obsoleto "awaiting" -> "in_progress"
       if(r.status === 'awaiting'){ r.status = 'in_progress'; changed = true; }
+      if(r.status === 'cancelled') { /* nuevo estado: cancelled válido */ }
     }
     if(!Array.isArray(data.settings.deviceTypes) || !data.settings.deviceTypes.length){
       data.settings.deviceTypes = DEFAULT_DEVICES.slice();
       changed = true;
     }
+    if(!data.settings.creator){ data.settings.creator = { phone:'', whatsapp:'' }; changed = true; }
     data.schemaVersion = SCHEMA_VERSION;
     if(changed) save(false);
   }
@@ -111,9 +113,13 @@ const DB = (() => {
       Object.assign(data.settings, patch);
       save();
     },
+    updateCreator(patch){
+      data.settings.creator = { ...data.settings.creator, ...patch };
+      save(false);
+    },
     updateGithub(patch){
       data.settings.github = { ...data.settings.github, ...patch };
-      save(false); // los cambios de config no disparan push
+      save(false);
     },
     addDeviceType(name){
       name = (name||'').trim();
