@@ -245,6 +245,7 @@ const Views = (() => {
     const photos = { device: (r.devicePhotos||[]).slice(), client: r.clientPhoto || null };
     let acceptAudio = r.acceptAudio || null;
     const naFields = (r.naFields||[]).slice();
+    const parts = (r.parts||[]).map(p=>({ name:p.name||'', qty:p.qty||1, unitCost:p.unitCost!=null?p.unitCost:'' }));
     const phones = (r.clientPhones && r.clientPhones.length)
       ? r.clientPhones.slice()
       : (r.clientPhone ? [r.clientPhone] : ['']);
@@ -306,8 +307,8 @@ const Views = (() => {
           <label>Fotos del equipo</label>
           <div id="devicePhotos" class="multi-photo-grid"></div>
           <label class="photo-add-btn">
-            ${ICONS.plus}<span>Añadir foto del equipo</span>
-            <input type="file" accept="image/*" capture="environment" id="addDevicePhoto" multiple>
+            ${ICONS.plus}<span>Añadir foto del equipo (cámara o galería)</span>
+            <input type="file" accept="image/*" id="addDevicePhoto" multiple>
           </label>
         </div>
 
@@ -337,6 +338,14 @@ const Views = (() => {
           <p class="muted small" style="margin:6px 2px 0">La garantía comienza a contar el día que marques el equipo como <b>Entregado</b>.</p>
         </div>
         ${naWrap('notes','Notas',`<textarea name="notes">${escape(r.notes||'')}</textarea>`,naFields)}
+
+        ${sectionDivider('Piezas usadas')}
+        <p class="muted small" style="margin:-4px 2px 10px">Añade las piezas que cambiaste (puerto, mica, botón, batería, micrófono, etc.) con su <b>costo</b>. Si fue una reparación sin cambio de pieza, deja la lista vacía.</p>
+        <div id="partsList" class="parts-list"></div>
+        <button type="button" class="btn-secondary btn-inline" id="addPartBtn">${ICONS.plus} Añadir pieza</button>
+        <div id="partsSummary" class="parts-summary hidden"></div>
+
+
 
         <button type="submit" class="btn-primary" style="margin-top:8px">${existing?'Guardar cambios':'Registrar reparación'}</button>
         <button type="button" class="btn-primary btn-cancel" id="cancelRepairBtn" style="margin-top:10px">
@@ -443,8 +452,8 @@ const Views = (() => {
       const box = document.getElementById('clientPhotoBox');
       box.classList.toggle('has-img', !!photos.client);
       box.innerHTML = photos.client
-        ? `<img src="${photos.client}" id="clientPhotoImg"><input type="file" accept="image/*" capture="user" id="clientPhotoInput"><button type="button" class="photo-remove" id="clientPhotoRm">${ICONS.trash}</button>`
-        : `${ICONS.person}<span>Foto cliente</span><input type="file" accept="image/*" capture="user" id="clientPhotoInput">`;
+        ? `<img src="${photos.client}" id="clientPhotoImg"><input type="file" accept="image/*" id="clientPhotoInput"><button type="button" class="photo-remove" id="clientPhotoRm">${ICONS.trash}</button>`
+        : `${ICONS.person}<span>Foto cliente<br><small>cámara o galería</small></span><input type="file" accept="image/*" id="clientPhotoInput">`;
       const inp = document.getElementById('clientPhotoInput');
       if(inp) inp.onchange = async e=>{
         const f = e.target.files[0]; if(!f) return;
@@ -506,6 +515,62 @@ const Views = (() => {
     }
     renderAudio();
 
+    // === PIEZAS ===
+    const partOptionsHtml = (DB.settings.productTypes||[])
+      .map(p=>`<option value="${escape(p)}">`).join('');
+    function renderParts(){
+      const wrap = document.getElementById('partsList');
+      const sum = document.getElementById('partsSummary');
+      if(!wrap) return;
+      if(!parts.length){
+        wrap.innerHTML = '<p class="muted small parts-empty">Reparación sin cambio de pieza.</p>';
+        sum.classList.add('hidden');
+        return;
+      }
+      // datalist único reutilizable
+      wrap.innerHTML = parts.map((p,i)=>`
+        <div class="part-row" data-pi="${i}">
+          <div class="pr-main">
+            <input class="pr-name" list="partsTypesList" placeholder="Pieza (puerto, mica, batería...)" value="${escape(p.name||'')}" data-pf="name" data-pi="${i}">
+            <div class="pr-nums">
+              <input class="pr-qty" type="number" min="1" step="1" inputmode="numeric" placeholder="Cant." value="${p.qty||1}" data-pf="qty" data-pi="${i}">
+              <input class="pr-cost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Costo unit." value="${p.unitCost!==''?p.unitCost:''}" data-pf="unitCost" data-pi="${i}">
+            </div>
+          </div>
+          <button type="button" class="icon-btn-sm pr-rm" data-rm-part="${i}" aria-label="Quitar pieza">${ICONS.trash}</button>
+        </div>
+      `).join('') + `<datalist id="partsTypesList">${partOptionsHtml}</datalist>`;
+      wrap.querySelectorAll('input[data-pi]').forEach(inp=>{
+        inp.addEventListener('input', e=>{
+          const i = +inp.dataset.pi; const f = inp.dataset.pf;
+          if(f==='qty') parts[i].qty = parseInt(inp.value,10)||0;
+          else if(f==='unitCost') parts[i].unitCost = inp.value;
+          else parts[i].name = inp.value;
+          updatePartsSummary();
+        });
+      });
+      wrap.querySelectorAll('[data-rm-part]').forEach(b=>{
+        b.onclick = ()=>{ parts.splice(+b.dataset.rmPart,1); renderParts(); };
+      });
+      updatePartsSummary();
+    }
+    function updatePartsSummary(){
+      const sum = document.getElementById('partsSummary');
+      if(!sum) return;
+      const valid = parts.filter(p=>p.name && Number(p.qty)>0);
+      if(!valid.length){ sum.classList.add('hidden'); return; }
+      const inv = valid.reduce((a,p)=> a + (Number(p.unitCost||0)*Number(p.qty||0)), 0);
+      sum.classList.remove('hidden');
+      sum.innerHTML = `<span>Piezas: <b>${valid.length}</b></span><span>Inversión en piezas: <b>$ ${inv.toFixed(2)}</b></span>`;
+    }
+    document.getElementById('addPartBtn').onclick = ()=>{
+      parts.push({ name:'', qty:1, unitCost:'' });
+      renderParts();
+    };
+    renderParts();
+
+
+
     // Submit
     document.getElementById('repairForm').addEventListener('submit', e=>{
       e.preventDefault();
@@ -559,6 +624,19 @@ const Views = (() => {
         data.clientPhoto = photos.client;
         data.acceptAudio = acceptAudio;
         data.naFields = naFields;
+        data.parts = parts
+          .map(p=>({
+            name: String(p.name||'').trim(),
+            qty: Math.max(0, parseInt(p.qty,10)||0),
+            unitCost: (p.unitCost!=='' && p.unitCost!=null) ? Math.max(0, parseFloat(p.unitCost)||0) : 0
+          }))
+          .filter(p=> p.name && p.qty>0);
+        // Auto-añadir piezas nuevas al catálogo de productos
+        for(const p of data.parts){
+          if(!DB.settings.productTypes.some(x=>x.toLowerCase()===p.name.toLowerCase())){
+            DB.addProductType(p.name);
+          }
+        }
 
         if(existing){
           DB.updateRepair(existing.id, data);
@@ -639,7 +717,25 @@ const Views = (() => {
         return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} días · hasta ${fmtDate(endTs)} ${status}</span></div>`;
       })()}
 
+      ${(()=>{
+        const ps = r.parts||[];
+        if(!ps.length) return `<div class="detail-row"><span class="lbl">Piezas</span><span class="val"><span class="muted">Sin cambio de pieza</span></span></div>`;
+        const inv = ps.reduce((a,p)=> a + Number(p.unitCost||0)*Number(p.qty||0), 0);
+        const price = Number(r.price||0);
+        const profit = price - inv;
+        const pcls = profit>=0 ? 'pos' : 'neg';
+        const rows = ps.map(p=>`<div class="part-show"><span class="ps-name">${escape(p.name)}</span><span class="ps-meta">${p.qty} × $ ${Number(p.unitCost||0).toFixed(2)}</span><span class="ps-total">$ ${(Number(p.unitCost||0)*Number(p.qty||0)).toFixed(2)}</span></div>`).join('');
+        return `<div class="section-title">Piezas cambiadas</div>
+          <div class="parts-show">${rows}</div>
+          <div class="parts-show-foot">
+            <span>Inversión en piezas <b>$ ${inv.toFixed(2)}</b></span>
+            ${r.price!=null?`<span class="tx-profit ${pcls}">Ganancia rep.: $ ${profit.toFixed(2)}</span>`:''}
+          </div>`;
+      })()}
+
       ${r.acceptAudio ? `<div class="section-title">Aceptación del cliente</div><audio controls src="${r.acceptAudio}" style="width:100%"></audio>` : ''}
+
+
 
       <div class="section-title">Cambiar estado</div>
       <div class="select-elegant">
@@ -849,16 +945,41 @@ const Views = (() => {
     const hasLocal = typeof LocalFile !== 'undefined' && LocalFile.hasHandle();
     const localSupported = typeof LocalFile !== 'undefined' && LocalFile.isSupported();
 
-    view().innerHTML = `
-      <h2 style="margin:0 0 16px;font-size:20px">Administración</h2>
+    const menuItems = [
+      {id:'adm-name',    t:'Nombre',          s:'Marca del sistema',      i:ICONS.edit},
+      {id:'adm-logo',    t:'Logo',            s:'Imagen o ícono',         i:ICONS.camera},
+      {id:'adm-creator', t:'Creador',         s:'Contactos en cabecera',  i:ICONS.phone},
+      {id:'adm-pass',    t:'Contraseña',      s:'Acceso y seguridad',     i:ICONS.save},
+      {id:'adm-recover', t:'Recuperación',    s:'Preguntas de seguridad', i:ICONS.search},
+      {id:'adm-gh',      t:'GitHub',          s:'Respaldo en la nube',    i:ICONS.cloud},
+      {id:'adm-local',   t:'Archivo local',   s:'Guardado en disco',      i:ICONS.save},
+      {id:'adm-backup',  t:'Copia manual',    s:'Exportar / importar',    i:ICONS.upload},
+      {id:'adm-devices', t:'Equipos',         s:'Catálogo de equipos',    i:ICONS.box},
+      {id:'adm-products',t:'Productos',       s:'Piezas y artículos',     i:ICONS.box},
+      {id:'adm-warranty',t:'Garantía',        s:'Días por defecto',       i:ICONS.check},
+      {id:'adm-stats',   t:'Estadísticas',    s:'Ganancia · inversión',   i:ICONS.edit}
+    ];
+    const menuHtml = `
+      <div class="admin-menu">
+        ${menuItems.map(m=>`<button class="adm-tile" data-jump="${m.id}" type="button">
+          <span class="adm-ico">${m.i}</span>
+          <span class="adm-t">${escape(m.t)}</span>
+          <span class="adm-s">${escape(m.s)}</span>
+        </button>`).join('')}
+      </div>`;
 
-      <div class="admin-card">
+    view().innerHTML = `
+      <h2 style="margin:0 0 10px;font-size:20px">Administración</h2>
+      <p class="muted small" style="margin:0 0 14px">Toca un módulo para ir directo a esa configuración.</p>
+      ${menuHtml}
+
+      <div class="admin-card" id="adm-name">
         <h3>Nombre del sistema</h3>
         <p>La segunda palabra se mostrará en el color principal automáticamente.</p>
         <input id="appNameInput" class="input-pill" value="${escape(s.appName)}">
       </div>
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-logo">
         <h3>Logo del sistema</h3>
         <p>Sube una imagen (PNG/JPG/SVG). Se mostrará en el inicio de sesión y en la cabecera. Si no eliges ninguna se usa el logo por defecto.</p>
         <div class="logo-upload">
@@ -882,7 +1003,7 @@ const Views = (() => {
       </div>
 
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-creator">
         <h3>Datos del creador (opcional)</h3>
         <p>Se muestran como botones en la cabecera para llamar o enviar WhatsApp.</p>
         <div class="form-row">
@@ -897,21 +1018,28 @@ const Views = (() => {
         </div>
       </div>
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-pass">
         <div class="row-between">
           <div style="flex:1;min-width:0"><h3>Pedir contraseña al entrar</h3><p>Si está apagado, no pedirá contraseña</p></div>
           <label class="switch"><input type="checkbox" id="reqPass" ${s.requirePassword?'checked':''}><span class="slider"></span></label>
         </div>
-      </div>
-
-      <div class="admin-card">
+        <hr style="border:0;border-top:1px solid var(--border);margin:14px 0">
         <h3>Cambiar contraseña</h3>
         <p>Define una nueva contraseña de acceso</p>
         <div class="form-group"><input type="password" id="newPass" placeholder="Nueva contraseña"></div>
         <button class="btn-secondary" id="savePassBtn">Actualizar contraseña</button>
       </div>
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-recover">
+        <h3>Preguntas de seguridad</h3>
+        <p>Configura preguntas personales (mascota, hobby preferido, ciudad de nacimiento, etc.). Te permitirán recuperar tu contraseña si la olvidas.</p>
+        <div id="sqList" class="sq-list"></div>
+        <button class="btn-secondary btn-inline" id="addSqBtn" style="margin-top:6px">${ICONS.plus} Añadir pregunta</button>
+        <button class="btn-primary" id="saveSqBtn" style="margin-top:10px">Guardar preguntas</button>
+        <p class="muted small" style="margin-top:8px">Recomendado: configura al menos 2 preguntas. Las respuestas no distinguen mayúsculas ni acentos.</p>
+      </div>
+
+      <div class="admin-card" id="adm-gh">
         <div class="row-between" style="margin-bottom:8px">
           <h3 style="margin:0">${ICONS.cloud} Sincronización GitHub</h3>
           <label class="switch"><input type="checkbox" id="ghEnabled" ${g.enabled?'checked':''}><span class="slider"></span></label>
@@ -938,7 +1066,7 @@ const Views = (() => {
       </div>
 
       ${typeof LocalFile !== 'undefined' ? `
-      <div class="admin-card">
+      <div class="admin-card" id="adm-local">
         <h3>${ICONS.save} Guardar JSON en una ubicación</h3>
         <p>Elige un archivo local. Las fotos y audios viajan dentro del JSON — al mover ese archivo nunca pierdes información.</p>
         ${localSupported ? `
@@ -951,7 +1079,7 @@ const Views = (() => {
         ` : `<p class="muted small">Tu navegador no soporta elegir ubicación. Usa "Exportar JSON" en su lugar.</p>`}
       </div>` : ''}
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-backup">
         <h3>Copia local (manual)</h3>
         <p>Exporta o importa el JSON manualmente. Contiene fotos + audios embebidos.</p>
         <div class="btn-row">
@@ -961,7 +1089,7 @@ const Views = (() => {
         <input type="file" id="importFile" accept="application/json" style="display:none">
       </div>
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-devices">
         <h3>Equipos disponibles</h3>
         <p>Aparecen como sugerencias al registrar una reparación</p>
         <div class="chip-list" id="deviceTypes">
@@ -973,7 +1101,7 @@ const Views = (() => {
         </div>
       </div>
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-products">
         <h3>Productos para ventas y compras</h3>
         <p>Aparecen como sugerencias al registrar un movimiento</p>
         <div class="chip-list" id="productTypes">
@@ -985,21 +1113,75 @@ const Views = (() => {
         </div>
       </div>
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-warranty">
         <h3>Garantía por defecto</h3>
         <p>Días que se rellenarán automáticamente al crear una reparación nueva.</p>
         <input id="defWarranty" type="number" min="0" step="1" inputmode="numeric" class="input-pill" value="${s.defaultWarrantyDays!=null?s.defaultWarrantyDays:30}">
       </div>
 
-      <div class="admin-card">
+      <div class="admin-card" id="adm-stats">
         <h3>Estadísticas</h3>
-        <p>Las estadísticas del sistema (reparaciones) y de compras/ventas se muestran ahora en la sección <b>Comp/Vent</b>, desplegables para acceder con un toque.</p>
+        <p>Las estadísticas de <b>ganancia</b>, <b>inversión</b>, <b>compras</b> y <b>ventas</b> se muestran ahora en la sección <b>Comp/Vent</b>, desplegables para acceder con un toque.</p>
         <button class="btn-secondary" id="goStatsBtn">Ir a estadísticas</button>
       </div>
     `;
 
+    // Menú elegante: scroll suave a cada sección
+    view().querySelectorAll('[data-jump]').forEach(b=>{
+      b.onclick = ()=>{
+        const el = document.getElementById(b.dataset.jump);
+        if(!el) return;
+        el.scrollIntoView({behavior:'smooth', block:'start'});
+        el.classList.add('flash');
+        setTimeout(()=>el.classList.remove('flash'), 1500);
+      };
+    });
+
+    // === Preguntas de seguridad ===
+    const sq = (s.securityQuestions||[]).map(x=>({ q:x.q||'', aHash:x.aHash||null, a:'' }));
+    if(!sq.length) sq.push({q:'',a:'',aHash:null});
+    const SQ_PRESETS = ['¿Nombre de tu primera mascota?','¿Cuál es tu hobby preferido?','¿Ciudad donde naciste?','¿Mejor amigo de la infancia?','¿Comida favorita?','¿Nombre de tu madre?','¿Modelo de tu primer teléfono?','¿Película favorita?'];
+    function renderSq(){
+      const wrap = document.getElementById('sqList'); if(!wrap) return;
+      const dlOpts = SQ_PRESETS.map(p=>`<option value="${escape(p)}">`).join('');
+      wrap.innerHTML = sq.map((it,i)=>`
+        <div class="sq-row" data-si="${i}">
+          <input class="sq-q" list="sqPresets" placeholder="Pregunta" value="${escape(it.q||'')}" data-sf="q" data-si="${i}">
+          <input class="sq-a" type="text" placeholder="${it.aHash?'(respuesta guardada — escribe para cambiar)':'Respuesta'}" data-sf="a" data-si="${i}">
+          ${sq.length>1?`<button type="button" class="icon-btn-sm" data-rm-sq="${i}" aria-label="Quitar">${ICONS.trash}</button>`:''}
+        </div>
+      `).join('') + `<datalist id="sqPresets">${dlOpts}</datalist>`;
+      wrap.querySelectorAll('input[data-si]').forEach(inp=>{
+        inp.addEventListener('input', e=>{
+          const i = +inp.dataset.si; const f = inp.dataset.sf;
+          sq[i][f] = inp.value;
+        });
+      });
+      wrap.querySelectorAll('[data-rm-sq]').forEach(b=>{
+        b.onclick = ()=>{ sq.splice(+b.dataset.rmSq,1); if(!sq.length) sq.push({q:'',a:'',aHash:null}); renderSq(); };
+      });
+    }
+    renderSq();
+    document.getElementById('addSqBtn').onclick = ()=>{ sq.push({q:'',a:'',aHash:null}); renderSq(); };
+    document.getElementById('saveSqBtn').onclick = async ()=>{
+      const out = [];
+      for(const it of sq){
+        const q = (it.q||'').trim(); if(!q) continue;
+        let aHash = it.aHash;
+        if((it.a||'').trim()){ aHash = await DB.hashAnswer(it.a); }
+        if(!aHash) continue;
+        out.push({ q, aHash });
+      }
+      if(!out.length){ UI.toast('Añade al menos una pregunta con respuesta'); return; }
+      DB.setSecurityQuestions(out);
+      UI.toast('Preguntas guardadas');
+      admin();
+    };
+
     const gs = document.getElementById('goStatsBtn');
     if(gs) gs.onclick = ()=> App.go('sales');
+
+
 
 
     document.getElementById('appNameInput').addEventListener('change', e=>{
@@ -1149,63 +1331,71 @@ const Views = (() => {
   ];
   function txLabel(t){ return t==='sale' ? 'Venta' : 'Compra'; }
 
-  function computeTxStats(list){
+  // Calcula estadísticas combinadas (ventas + compras + reparaciones + piezas) por periodo.
+  function computeAllStats(){
     const now = new Date();
     const t0 = new Date(now); t0.setHours(0,0,0,0);
     const wd = (t0.getDay()+6)%7;
     const w0 = new Date(t0); w0.setDate(w0.getDate()-wd);
     const m0 = new Date(t0.getFullYear(), t0.getMonth(), 1);
     const y0 = new Date(t0.getFullYear(), 0, 1);
-    // sale=ingreso por ventas, cost=inversión (coste real de los productos vendidos),
-    // purchase=gasto en compras de stock/insumos
-    const empty = ()=>({sale:0, cost:0, purchase:0});
-    const buckets = {
-      day:   empty(),
-      week:  empty(),
-      month: empty(),
-      year:  empty(),
-      total: empty()
-    };
-    for(const tx of list){
-      const total = Number(tx.total||0);
+
+    const empty = ()=>({
+      salesIncome:0, salesCost:0,        // ventas y su costo de mercancía
+      purchases:0,                        // inversión en compras de stock
+      repairIncome:0, repairPartsCost:0,  // reparaciones entregadas y costo de piezas usadas
+      countSales:0, countPurchases:0, countRepairs:0,
+      pendingRepair:0                     // por cobrar (no entregadas)
+    });
+    const buckets = { day:empty(), week:empty(), month:empty(), year:empty(), total:empty() };
+    function inAll(ts, fn){
+      fn(buckets.total);
+      if(ts>=y0.getTime()) fn(buckets.year);
+      if(ts>=m0.getTime()) fn(buckets.month);
+      if(ts>=w0.getTime()) fn(buckets.week);
+      if(ts>=t0.getTime()) fn(buckets.day);
+    }
+    for(const tx of DB.transactions){
       const ts = tx.date || tx.createdAt || 0;
-      const isSale = tx.type==='sale';
-      const cost = isSale ? Number(tx.costTotal||0) : 0;
-      function add(b){
-        if(isSale){ b.sale += total; b.cost += cost; }
-        else b.purchase += total;
+      const total = Number(tx.total||0);
+      if(tx.type==='sale'){
+        const cost = Number(tx.costTotal||0);
+        inAll(ts, b=>{ b.salesIncome+=total; b.salesCost+=cost; b.countSales++; });
+      } else {
+        inAll(ts, b=>{ b.purchases+=total; b.countPurchases++; });
       }
-      add(buckets.total);
-      if(ts >= y0.getTime()) add(buckets.year);
-      if(ts >= m0.getTime()) add(buckets.month);
-      if(ts >= w0.getTime()) add(buckets.week);
-      if(ts >= t0.getTime()) add(buckets.day);
+    }
+    for(const r of DB.repairs){
+      const price = Number(r.price||0);
+      const partsCost = (r.parts||[]).reduce((a,p)=> a + Number(p.unitCost||0)*Number(p.qty||0), 0);
+      if(r.status==='delivered'){
+        const ts = r.deliveredAt || r.updatedAt || r.createdAt || 0;
+        inAll(ts, b=>{ b.repairIncome+=price; b.repairPartsCost+=partsCost; b.countRepairs++; });
+      } else if(r.status!=='cancelled' && price>0){
+        const dep = Number(r.deposit||0);
+        buckets.total.pendingRepair += Math.max(0, price - dep);
+      }
+    }
+    // Derivados
+    for(const k in buckets){
+      const b = buckets[k];
+      b.salesProfit = b.salesIncome - b.salesCost;
+      b.repairProfit = b.repairIncome - b.repairPartsCost;
+      b.totalProfit = b.salesProfit + b.repairProfit;
+      b.totalIncome = b.salesIncome + b.repairIncome;
+      b.totalInvested = b.salesCost + b.repairPartsCost; // dinero realmente convertido en ingresos
     }
     return buckets;
   }
 
   function computeRepairStats(){
-    const now=new Date(); const t0=new Date(now); t0.setHours(0,0,0,0);
-    const wd=(t0.getDay()+6)%7; const w0=new Date(t0); w0.setDate(w0.getDate()-wd);
-    const m0=new Date(t0.getFullYear(),t0.getMonth(),1);
-    const y0=new Date(t0.getFullYear(),0,1);
-    let dT=0,wT=0,mT=0,yT=0,total=0,pending=0,countDel=0;
-    for(const r of DB.repairs){
-      const price=Number(r.price||0); const dep=Number(r.deposit||0);
-      if(r.status==='delivered'){
-        countDel++;
-        const ts=r.updatedAt||r.createdAt||0;
-        total+=price;
-        if(ts>=t0.getTime()) dT+=price;
-        if(ts>=w0.getTime()) wT+=price;
-        if(ts>=m0.getTime()) mT+=price;
-        if(ts>=y0.getTime()) yT+=price;
-      } else if(r.status!=='cancelled' && price>0){
-        pending += Math.max(0, price - dep);
-      }
-    }
-    return { dT, wT, mT, yT, total, pending, countDel };
+    const a = computeAllStats();
+    return {
+      dT:a.day.repairIncome, wT:a.week.repairIncome, mT:a.month.repairIncome, yT:a.year.repairIncome,
+      total:a.total.repairIncome, pending:a.total.pendingRepair, countDel:a.total.countRepairs
+    };
   }
+
 
   function txCard(t){
     const isSale = t.type==='sale';
@@ -1270,32 +1460,77 @@ const Views = (() => {
   }
 
   function cvStatsTilesHtml(){
-    const stats = computeTxStats(DB.transactions);
+    const stats = computeAllStats();
     function tile(label, b, accent){
-      const net = b.sale - b.purchase;
-      const profit = b.sale - b.cost;
-      const netCls = net>=0 ? 'pos' : 'neg';
-      const profCls = profit>=0 ? 'pos' : 'neg';
-      return `<div class="tx-stat-card ${accent||''}">
-        <div class="tx-stat-label">${escape(label)}</div>
-        <div class="tx-stat-rows">
-          <div><span class="dot sale"></span>Ventas <b>${fmtMoney(b.sale)}</b></div>
-          <div><span class="dot purchase"></span>Compras <b>${fmtMoney(b.purchase)}</b></div>
-          <div><span class="dot cost"></span>Inversión <b>${fmtMoney(b.cost)}</b></div>
+      const pcls = b.totalProfit>=0 ? 'pos' : 'neg';
+      return `<div class="cv-tile ${accent||''}">
+        <div class="cv-tile-head">
+          <span class="cv-tile-label">${escape(label)}</span>
+          <span class="cv-tile-profit ${pcls}">${fmtMoney(b.totalProfit)}</span>
         </div>
-        <div class="tx-stat-net ${profCls}">Ganancia: <b>${fmtMoney(profit)}</b></div>
-        <div class="tx-stat-net ${netCls}">Caja neta: <b>${fmtMoney(net)}</b></div>
+        <div class="cv-tile-grid">
+          <div class="cv-mini sale"><span>Ventas</span><b>${fmtMoney(b.salesIncome)}</b></div>
+          <div class="cv-mini repair"><span>Reparaciones</span><b>${fmtMoney(b.repairIncome)}</b></div>
+          <div class="cv-mini cost"><span>Costo vendido</span><b>${fmtMoney(b.salesCost)}</b></div>
+          <div class="cv-mini cost"><span>Piezas usadas</span><b>${fmtMoney(b.repairPartsCost)}</b></div>
+          <div class="cv-mini buy"><span>Compras stock</span><b>${fmtMoney(b.purchases)}</b></div>
+          <div class="cv-mini count"><span>Movs</span><b>${b.countSales+b.countPurchases+b.countRepairs}</b></div>
+        </div>
       </div>`;
     }
     return `
-      <div class="tx-stats-grid">
+      <div class="cv-grid">
         ${tile('Hoy', stats.day)}
         ${tile('Esta semana', stats.week)}
         ${tile('Este mes', stats.month)}
         ${tile('Este año', stats.year)}
         ${tile('Total histórico', stats.total, 'gold')}
       </div>
-      <p class="muted small" style="margin-top:10px"><b>Ganancia</b> = ventas − inversión (lo que te costaron los productos). <b>Caja neta</b> = ventas − compras totales.</p>`;
+      <p class="muted xsmall" style="margin-top:10px"><b>Ganancia</b> grande = (Ventas − Costo vendido) + (Reparaciones − Piezas usadas). <b>Compras stock</b> es lo invertido en piezas/insumos.</p>`;
+  }
+
+  function stockPanelHtml(){
+    const stats = DB.productStats();
+    const items = Object.values(stats).sort((a,b)=>{
+      // alerta primero
+      const la = (a.min>0 && a.stock<=a.min) ? 0 : 1;
+      const lb = (b.min>0 && b.stock<=b.min) ? 0 : 1;
+      if(la!==lb) return la-lb;
+      return a.name.localeCompare(b.name,'es');
+    });
+    if(!items.length) return `<p class="muted small">Aún no hay productos con movimientos. Registra una compra o usa una pieza en una reparación para ver el stock.</p>`;
+    const lowCount = items.filter(i=> i.min>0 && i.stock<=i.min).length;
+    const rows = items.map(i=>{
+      const isLow = i.min>0 && i.stock<=i.min;
+      const cls = isLow ? 'low' : (i.stock<=0 ? 'zero' : '');
+      return `<div class="stk-row ${cls}">
+        <div class="stk-main">
+          <span class="stk-name">${escape(i.name)}</span>
+          <span class="stk-tags">
+            <span class="stk-tag in">+${i.purchased}</span>
+            <span class="stk-tag out">−${i.sold+i.usedInRepairs}</span>
+            ${isLow?'<span class="stk-tag alert">¡Bajo!</span>':''}
+          </span>
+        </div>
+        <div class="stk-side">
+          <span class="stk-stock">${i.stock}</span>
+          <input class="stk-min" type="number" min="0" step="1" inputmode="numeric" placeholder="mín" value="${i.min||''}" data-stk-min="${escape(i.name)}" title="Stock mínimo">
+        </div>
+      </div>`;
+    }).join('');
+    return `
+      <p class="muted xsmall" style="margin:0 0 10px">Define el <b>stock mínimo</b> de cada pieza. El sistema avisará cuando bajes de ese umbral.${lowCount?` Hoy hay <b class="warn">${lowCount}</b> por reponer.`:''}</p>
+      <div class="stk-list">${rows}</div>`;
+  }
+
+  function bindStockInputs(){
+    view().querySelectorAll('[data-stk-min]').forEach(inp=>{
+      inp.addEventListener('change', ()=>{
+        DB.setProductMinStock(inp.dataset.stkMin, inp.value);
+        UI.toast('Stock mínimo actualizado');
+        sales(document.getElementById('txFilter') ? document.getElementById('txFilter').value : 'all');
+      });
+    });
   }
 
   function sales(filter){
@@ -1312,27 +1547,41 @@ const Views = (() => {
       ${g.items.map(txCard).join('')}
     `).join('');
 
+    const stockStats = DB.productStats();
+    const lowList = Object.values(stockStats).filter(i=> i.min>0 && i.stock<=i.min);
+    const lowBadge = lowList.length ? `<span class="acc-badge alert">${lowList.length}</span>` : '';
+
     view().innerHTML = `
       <div class="greeting">Compras y <span>Ventas</span></div>
+
+      <div class="acc-card cv-stats-card open">
+        <button class="acc-head" data-acc type="button">
+          <span class="acc-ico">${ICONS.box}</span>
+          <span class="acc-title">Contabilidad e ingresos</span>
+          <span class="acc-sub">Ganancia total · ventas · reparaciones · inversión</span>
+          <span class="acc-chev"></span>
+        </button>
+        <div class="acc-body">${cvStatsTilesHtml()}</div>
+      </div>
 
       <div class="acc-card">
         <button class="acc-head" data-acc type="button">
           <span class="acc-ico">${ICONS.edit}</span>
-          <span class="acc-title">Estadísticas del sistema</span>
-          <span class="acc-sub">Reparaciones · entregas e ingresos</span>
+          <span class="acc-title">Reparaciones · resumen</span>
+          <span class="acc-sub">Entregas, por cobrar e ingresos</span>
           <span class="acc-chev"></span>
         </button>
         <div class="acc-body">${sysStatsTilesHtml()}</div>
       </div>
 
-      <div class="acc-card open">
+      <div class="acc-card ${lowList.length?'open':''}">
         <button class="acc-head" data-acc type="button">
           <span class="acc-ico">${ICONS.box}</span>
-          <span class="acc-title">Estadísticas de compras y ventas</span>
-          <span class="acc-sub">Inversión · ganancia · caja neta</span>
+          <span class="acc-title">Stock y alertas ${lowBadge}</span>
+          <span class="acc-sub">Cuánto te queda · cuándo reponer</span>
           <span class="acc-chev"></span>
         </button>
-        <div class="acc-body">${cvStatsTilesHtml()}</div>
+        <div class="acc-body">${stockPanelHtml()}</div>
       </div>
 
       <div class="btn-row" style="margin:14px 0 6px">
@@ -1348,8 +1597,11 @@ const Views = (() => {
     document.getElementById('newPurchaseBtn').onclick = ()=> newTransaction('purchase');
     document.getElementById('txFilter').addEventListener('change', e=> sales(e.target.value));
     bindAccordions();
+    bindStockInputs();
     bindTxCards();
   }
+
+
 
 
   function newTransaction(type, existing){

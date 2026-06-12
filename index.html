@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="css/styles.css?v=11" />
+  <link rel="stylesheet" href="css/styles.css?v=14" />
 </head>
 <body>
   <!-- LOGIN -->
@@ -19,6 +19,7 @@
       <p class="muted">Acceso del técnico</p>
       <input type="password" id="loginPass" placeholder="Contraseña" autocomplete="current-password" />
       <button class="btn-primary" id="loginBtn">Entrar</button>
+      <button type="button" id="forgotBtn" class="forgot-link">¿Olvidaste tu contraseña?</button>
       <p id="loginError" class="err hidden">Contraseña incorrecta</p>
     </div>
     <footer class="credit">
@@ -92,12 +93,12 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="js/db.js?v=11"></script>
-  <script src="js/sync.js?v=11"></script>
-  <script src="js/auth.js?v=11"></script>
-  <script src="js/ui.js?v=11"></script>
-  <script src="js/views.js?v=11"></script>
-  <script src="js/app.js?v=11"></script>
+  <script src="js/db.js?v=14"></script>
+  <script src="js/sync.js?v=14"></script>
+  <script src="js/auth.js?v=14"></script>
+  <script src="js/ui.js?v=14"></script>
+  <script src="js/views.js?v=14"></script>
+  <script src="js/app.js?v=14"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

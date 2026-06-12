@@ -1,7 +1,7 @@
 // Almacén con localStorage + migración compatible hacia adelante.
 const DB = (() => {
   const KEY = 'taller_db_v1';
-  const SCHEMA_VERSION = 8;
+  const SCHEMA_VERSION = 9;
   const DEFAULT_DEVICES = [
     'Televisor','Smart TV','Monitor','Laptop','PC de escritorio','Tablet',
     'Teléfono móvil','Impresora','Microondas','Lavadora','Refrigerador',
@@ -25,9 +25,11 @@ const DB = (() => {
       logoPreset: 'tools',
       requirePassword: true,
       passwordHash: null,
+      securityQuestions: [], // [{q, aHash}]
       deviceTypes: DEFAULT_DEVICES.slice(),
       productTypes: DEFAULT_PRODUCTS.slice(),
       defaultWarrantyDays: 30,
+      productMinStock: {},
       creator: { phone: '', whatsapp: '' },
       github: {
         enabled: false, user: '', repo: '', branch: 'main',
@@ -78,7 +80,8 @@ const DB = (() => {
       if(r.deliveredAt === undefined){
         r.deliveredAt = r.status === 'delivered' ? (r.updatedAt || r.createdAt || null) : null;
         changed = true;
-      }
+      if(!Array.isArray(r.parts)){ r.parts = []; changed = true; }
+    }
     }
     if(!Array.isArray(data.transactions)){ data.transactions = []; changed = true; }
     if(typeof data.txCounter !== 'number'){ data.txCounter = 1; changed = true; }
@@ -94,9 +97,13 @@ const DB = (() => {
       data.settings.productTypes = DEFAULT_PRODUCTS.slice(); changed = true;
     }
     if(data.settings.defaultWarrantyDays == null){ data.settings.defaultWarrantyDays = 30; changed = true; }
+    if(!data.settings.productMinStock || typeof data.settings.productMinStock!=='object'){
+      data.settings.productMinStock = {}; changed = true;
+    }
     if(!data.settings.creator){ data.settings.creator = { phone:'', whatsapp:'' }; changed = true; }
     if(data.settings.logo === undefined){ data.settings.logo = null; changed = true; }
     if(!data.settings.logoPreset){ data.settings.logoPreset = 'tools'; changed = true; }
+    if(!Array.isArray(data.settings.securityQuestions)){ data.settings.securityQuestions = []; changed = true; }
     data.schemaVersion = SCHEMA_VERSION;
     if(changed) save(false);
   }
@@ -117,6 +124,14 @@ const DB = (() => {
     const hash = await crypto.subtle.digest('SHA-256', buf);
     return Array.from(new Uint8Array(hash)).map(b=>b.toString(16).padStart(2,'0')).join('');
   }
+  // Normaliza: minúsculas + sin acentos + colapsa espacios. Para búsquedas robustas.
+  function norm(s){
+    if(s==null) return '';
+    return String(s).toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .replace(/\s+/g,' ').trim();
+  }
+  async function normAns(s){ return DB._normAnsImpl ? DB._normAnsImpl(s) : sha256(norm(s)); }
 
   return {
     DEFAULT_DEVICES, DEFAULT_PRODUCTS,
@@ -124,7 +139,12 @@ const DB = (() => {
     get settings(){ return data.settings; },
     get repairs(){ return data.repairs; },
     get transactions(){ return data.transactions; },
-    save, sha256,
+    save, sha256, norm,
+    async hashAnswer(ans){ return sha256(norm(ans)); },
+    setSecurityQuestions(list){
+      data.settings.securityQuestions = Array.isArray(list)?list:[];
+      save();
+    },
     replaceAll(newData){
       data = deepMerge(structuredClone(defaults), newData);
       migrate();
@@ -215,29 +235,35 @@ const DB = (() => {
     },
     findTransaction(id){ return data.transactions.find(t=>t.id===id); },
     searchTransactions(q){
-      q = (q||'').toLowerCase().trim();
-      if(!q) return data.transactions;
-      return data.transactions.filter(t =>
-        (t.product||'').toLowerCase().includes(q) ||
-        (t.counterparty||'').toLowerCase().includes(q) ||
-        (t.notes||'').toLowerCase().includes(q) ||
-        (t.id||'').toLowerCase().includes(q)
-      );
+      const nq = norm(q);
+      if(!nq) return data.transactions;
+      return data.transactions.filter(t => {
+        const hay = [
+          t.id, t.product, t.counterparty, t.notes, t.type,
+          t.type==='sale'?'venta ingreso':'compra gasto',
+          t.quantity, t.unitPrice, t.unitCost, t.costTotal, t.total,
+          t.date?new Date(t.date).toLocaleDateString('es-ES'):''
+        ].map(x=>norm(x)).join(' ');
+        return hay.includes(nq);
+      });
     },
     search(q){
-      q = (q||'').toLowerCase().trim();
-      if(!q) return data.repairs;
+      const nq = norm(q);
+      if(!nq) return data.repairs;
+      const statusMap = {pending:'pendiente',in_progress:'en proceso proceso',completed:'completada',delivered:'entregada',cancelled:'cancelada'};
       return data.repairs.filter(r => {
         const phones = (r.clientPhones||[]).join(' ');
-        return (r.clientName||'').toLowerCase().includes(q) ||
-          phones.toLowerCase().includes(q) ||
-          (r.clientPhone||'').toLowerCase().includes(q) ||
-          (r.clientAddress||'').toLowerCase().includes(q) ||
-          (r.clientIdNumber||'').toLowerCase().includes(q) ||
-          (r.device||'').toLowerCase().includes(q) ||
-          (r.brand||'').toLowerCase().includes(q) ||
-          (r.id||'').toLowerCase().includes(q) ||
-          (r.issue||'').toLowerCase().includes(q);
+        const partsTxt = (r.parts||[]).map(p=>`${p.name||''} ${p.qty||''} ${p.unitCost||''}`).join(' ');
+        const hay = [
+          r.id, r.clientName, phones, r.clientPhone, r.clientAddress, r.clientIdNumber,
+          r.device, r.brand, r.model, r.serial, r.issue, r.notes,
+          statusMap[r.status]||r.status, partsTxt,
+          r.price, r.deposit, r.warrantyDays,
+          r.dueDate?new Date(r.dueDate).toLocaleDateString('es-ES'):'',
+          r.createdAt?new Date(r.createdAt).toLocaleDateString('es-ES'):'',
+          r.deliveredAt?new Date(r.deliveredAt).toLocaleDateString('es-ES'):''
+        ].map(x=>norm(x)).join(' ');
+        return hay.includes(nq);
       });
     },
     byStatus(s){ return data.repairs.filter(r=>r.status===s); },
@@ -248,6 +274,58 @@ const DB = (() => {
         (r.status==='pending'||r.status==='in_progress') &&
         r.dueDate && new Date(r.dueDate).getTime() < end
       );
+    },
+    // === Stock ===
+    setProductMinStock(name, qty){
+      const n = String(name||'').trim(); if(!n) return;
+      data.settings.productMinStock = data.settings.productMinStock || {};
+      const v = parseInt(qty,10);
+      if(isNaN(v) || v<=0) delete data.settings.productMinStock[n];
+      else data.settings.productMinStock[n] = v;
+      save();
+    },
+    // Devuelve mapa { nombre: { purchased, sold, usedInRepairs, stock, min, invested, earned } }
+    productStats(){
+      const map = {};
+      function key(n){ return String(n||'').trim(); }
+      function ensure(n){
+        if(!map[n]) map[n] = { name:n, purchased:0, sold:0, usedInRepairs:0, invested:0, earned:0, stock:0, min:0 };
+        return map[n];
+      }
+      for(const t of data.transactions){
+        const n = key(t.product); if(!n) continue;
+        const q = Number(t.quantity||0);
+        const total = Number(t.total||0);
+        if(t.type==='purchase'){
+          const m = ensure(n);
+          m.purchased += q;
+          m.invested += total;
+        } else if(t.type==='sale'){
+          const m = ensure(n);
+          m.sold += q;
+          const cost = t.costTotal!=null ? Number(t.costTotal) : 0;
+          m.earned += (total - cost);
+          m.invested += cost; // inversión asociada a esa venta
+        }
+      }
+      for(const r of data.repairs){
+        for(const p of (r.parts||[])){
+          const n = key(p.name); if(!n) continue;
+          const q = Number(p.qty||0);
+          const c = Number(p.unitCost||0);
+          const m = ensure(n);
+          m.usedInRepairs += q;
+          m.invested += c*q;
+        }
+      }
+      const mins = data.settings.productMinStock||{};
+      for(const n in map){
+        map[n].stock = map[n].purchased - map[n].sold - map[n].usedInRepairs;
+        map[n].min = mins[n]||0;
+      }
+      // incluir productos con min configurado aunque no tengan movimientos
+      for(const n in mins){ ensure(n).min = mins[n]; }
+      return map;
     },
     exportBlob(){
       return new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});

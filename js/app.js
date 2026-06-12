@@ -125,6 +125,8 @@ const App = (() => {
     document.getElementById('loginPass').addEventListener('keydown', e=>{
       if(e.key==='Enter') tryLogin();
     });
+    const fb = document.getElementById('forgotBtn');
+    if(fb) fb.addEventListener('click', openForgotFlow);
     document.getElementById('logoutBtn').addEventListener('click', ()=>{
       Auth.logout();
       showLogin();
@@ -161,6 +163,51 @@ const App = (() => {
     } else {
       err.classList.remove('hidden');
     }
+  }
+  function openForgotFlow(){
+    const qs = Auth.getQuestions();
+    if(!qs.length){
+      UI.toast('No hay preguntas configuradas. Pide ayuda al administrador.');
+      return;
+    }
+    const rows = qs.map((q,i)=>`
+      <div class="form-group">
+        <label>${UI.escape(q)}</label>
+        <input type="text" data-ans="${i}" autocomplete="off">
+      </div>`).join('');
+    UI.openModal(`
+      <h2 style="margin:0 0 6px;font-size:20px">Recuperar contraseña</h2>
+      <p class="muted small" style="margin:0 0 12px">Responde las preguntas que configuraste. No distinguen mayúsculas ni acentos.</p>
+      <form id="forgotForm">
+        ${rows}
+        <button type="submit" class="btn-primary">Verificar respuestas</button>
+      </form>
+    `);
+    document.getElementById('forgotForm').addEventListener('submit', async e=>{
+      e.preventDefault();
+      const answers = Array.from(document.querySelectorAll('[data-ans]')).map(i=>i.value);
+      const ok = await Auth.verifyAnswers(answers);
+      if(!ok){ UI.toast('Respuestas incorrectas'); return; }
+      UI.openModal(`
+        <h2 style="margin:0 0 6px;font-size:20px">Nueva contraseña</h2>
+        <p class="muted small" style="margin:0 0 12px">Define una nueva contraseña de acceso.</p>
+        <form id="newPassForm">
+          <div class="form-group"><input type="password" id="np1" placeholder="Nueva contraseña" required></div>
+          <div class="form-group"><input type="password" id="np2" placeholder="Repetir contraseña" required></div>
+          <button type="submit" class="btn-primary">Guardar contraseña</button>
+        </form>
+      `);
+      document.getElementById('newPassForm').addEventListener('submit', async ev=>{
+        ev.preventDefault();
+        const a = document.getElementById('np1').value;
+        const b = document.getElementById('np2').value;
+        if(a.length<3){ UI.toast('Mínimo 3 caracteres'); return; }
+        if(a!==b){ UI.toast('No coinciden'); return; }
+        await Auth.setPassword(a);
+        UI.closeModal();
+        UI.toast('Contraseña actualizada. Ya puedes entrar.');
+      });
+    });
   }
   return { init, go, refresh, applyBrand, getPresets };
 })();
