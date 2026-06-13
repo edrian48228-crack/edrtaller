@@ -123,6 +123,8 @@ const App = (() => {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
     go('dashboard');
+    // Auditoría automática al entrar: avisa si algo no cuadra
+    setTimeout(()=>{ if(window.Views && Views.autoAuditOnLoad) Views.autoAuditOnLoad(); }, 600);
   }
   function go(v, arg, extra){
     current = v; currentArg = arg;

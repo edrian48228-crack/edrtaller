@@ -170,12 +170,35 @@ const Views = (() => {
   }
 
   // ============= DASHBOARD =============
+  // Opciones de ordenación reutilizables (dashboard, lista y búsqueda)
+  const SORT_OPTIONS = [
+    {k:'recent',     label:'Más recientes',     fn:(a,b)=>(b.createdAt||0)-(a.createdAt||0)},
+    {k:'oldest',     label:'Más antiguas',      fn:(a,b)=>(a.createdAt||0)-(b.createdAt||0)},
+    {k:'dueSoon',    label:'Entrega próxima',   fn:(a,b)=>(a.dueDate||Infinity)-(b.dueDate||Infinity)},
+    {k:'id',         label:'Identificación (ID)', fn:(a,b)=>String(a.id).localeCompare(String(b.id),'es')},
+    {k:'client',     label:'Cliente (A‑Z)',     fn:(a,b)=>String(a.clientName||'').localeCompare(String(b.clientName||''),'es')},
+    {k:'device',     label:'Equipo (A‑Z)',      fn:(a,b)=>String(a.device||'').localeCompare(String(b.device||''),'es')},
+    {k:'identity',   label:'Nº de identidad',   fn:(a,b)=>String(a.clientIdNumber||'').localeCompare(String(b.clientIdNumber||''),'es')}
+  ];
+  function applySort(list, sortKey){
+    const opt = SORT_OPTIONS.find(o=>o.k===sortKey) || SORT_OPTIONS[0];
+    return list.slice().sort(opt.fn);
+  }
+  function sortSelectHtml(id, current){
+    const opts = SORT_OPTIONS.map(o=>`<option value="${o.k}" ${o.k===current?'selected':''}>Ordenar: ${escape(o.label)}</option>`).join('');
+    return `<div class="select-elegant"><select id="${id}" aria-label="Ordenar">${opts}</select></div>`;
+  }
+
   function dashboard(){
     const repairs = DB.repairs;
-    const pending = DB.byStatus('pending').length + DB.byStatus('in_progress').length;
+    const pending = DB.byStatus('pending').length;
+    const inProgress = DB.byStatus('in_progress').length;
+    const completed = DB.byStatus('completed').length;
+    const delivered = DB.byStatus('delivered').length;
+    const cancelled = DB.byStatus('cancelled').length;
     const todayPending = DB.todayPending().length;
-    const completed = DB.byStatus('completed').length + DB.byStatus('delivered').length;
-    const recent = repairs.slice(0,5);
+    const sortKey = Views._dashSort || 'recent';
+    const recent = applySort(repairs, sortKey).slice(0,5);
 
     view().innerHTML = `
       <div class="greeting">Bienvenido a <span>${escape(DB.settings.appName)}</span></div>
@@ -186,11 +209,15 @@ const Views = (() => {
             <p>Tienes <b>${todayPending}</b> reparación(es) con entrega para hoy o vencidas</p>
           </div>${ICONS.clock}</div>
         </div>` : ''}
-      <div class="stats-grid two">
-        <div class="stat-card pending" data-go="repairs:pending">${ICONS.clock}<div class="stat-num">${pending}</div><div class="stat-lbl">Pendientes</div></div>
-        <div class="stat-card success" data-go="repairs:completed">${ICONS.check}<div class="stat-num">${completed}</div><div class="stat-lbl">Completadas</div></div>
+      <div class="stats-grid three">
+        <div class="stat-card pending" data-go="repairs:pending" title="Sin empezar">${ICONS.clock}<div class="stat-num">${pending}</div><div class="stat-lbl">Pendientes</div></div>
+        <div class="stat-card inprogress" data-go="repairs:in_progress" title="En proceso de reparación">${ICONS.edit}<div class="stat-num">${inProgress}</div><div class="stat-lbl">En proceso</div></div>
+        <div class="stat-card success" data-go="repairs:completed" title="Listas para entregar">${ICONS.check}<div class="stat-num">${completed}</div><div class="stat-lbl">Completadas</div></div>
+        <div class="stat-card delivered" data-go="repairs:delivered" title="Entregadas al cliente">${ICONS.box}<div class="stat-num">${delivered}</div><div class="stat-lbl">Entregadas</div></div>
+        <div class="stat-card cancelled" data-go="repairs:cancelled" title="Reparaciones canceladas">${ICONS.cancel}<div class="stat-num">${cancelled}</div><div class="stat-lbl">Canceladas</div></div>
       </div>
       ${sectionDivider('Recientes', recent.length||0)}
+      ${sortSelectHtml('dashSort', sortKey)}
       ${recent.length ? recent.map(repairCard).join('') : emptyState('Aún no hay reparaciones','Pulsa el botón + para registrar la primera')}
     `;
     view().querySelectorAll('[data-go]').forEach(el=>{
@@ -198,6 +225,8 @@ const Views = (() => {
         const [v, f] = el.dataset.go.split(':'); App.go(v, f);
       });
     });
+    const ds = document.getElementById('dashSort');
+    if(ds) ds.addEventListener('change', e=>{ Views._dashSort = e.target.value; dashboard(); });
     bindRepairCards();
   }
 
@@ -206,6 +235,9 @@ const Views = (() => {
     let list = DB.repairs;
     const active = filter || 'all';
     if(active!=='all') list = list.filter(r=>r.status===active);
+
+    const sortKey = Views._listSort || 'recent';
+    list = applySort(list, sortKey);
 
     const groups = groupByDate(list);
     const grouped = groups.map(g=>`
@@ -216,14 +248,21 @@ const Views = (() => {
     const opts = FILTERS.map(f=>`<option value="${f.k}" ${f.k===active?'selected':''}>${f.label}</option>`).join('');
 
     view().innerHTML = `
-      <div class="select-elegant">
-        <select id="repairsFilter" aria-label="Filtrar reparaciones">${opts}</select>
+      <div class="filter-bar">
+        <div class="select-elegant">
+          <select id="repairsFilter" aria-label="Filtrar reparaciones">${opts}</select>
+        </div>
+        ${sortSelectHtml('repairsSort', sortKey)}
       </div>
       ${list.length ? grouped : emptyState('Sin reparaciones','No hay registros en esta categoría')}
     `;
     document.getElementById('repairsFilter').addEventListener('change', e=> repairsList(e.target.value));
+    document.getElementById('repairsSort').addEventListener('change', e=>{
+      Views._listSort = e.target.value; repairsList(active);
+    });
     bindRepairCards();
   }
+
 
   // ============= NUEVA / EDITAR =============
   function naWrap(fieldKey, label, inputHtml, naFields){
@@ -337,19 +376,22 @@ const Views = (() => {
               </select>
             </div>
           </div>
-          <div class="form-group"><label>Fecha entrega</label><input name="dueDate" type="date" value="${fmtDateInput(r.dueDate)}"></div>
+          <div class="form-group"><label>Fecha de entrada</label><input name="createdAt" id="createdAtInput" type="date" value="${fmtDateInput(r.createdAt || Date.now())}"></div>
         </div>
+        <div class="form-row">
+          <div class="form-group"><label>Fecha de entrega</label><input name="dueDate" id="dueDateInput" type="date" value="${fmtDateInput(r.dueDate)}"></div>
+          <div class="form-group">
+            <label>Garantía (días desde la entrega)</label>
+            <input name="warrantyDays" id="warrantyDaysInput" type="number" min="0" step="1" inputmode="numeric"
+              placeholder="Ej: 30" value="${r.warrantyDays!=null?r.warrantyDays:(existing?'':(DB.settings.defaultWarrantyDays||''))}">
+          </div>
+        </div>
+        <p class="muted small" id="warrantyHint" style="margin:-4px 2px 10px">La garantía comienza el día que marques el equipo como <b>Entregado</b>.</p>
         ${naWrap('price','Precio',`<input name="price" type="number" step="0.01" inputmode="decimal" value="${r.price!=null?r.price:''}">`,naFields)}
         ${naWrap('deposit','Anticipo',`<input name="deposit" type="number" step="0.01" inputmode="decimal" value="${r.deposit!=null?r.deposit:''}">`,naFields)}
-        <div class="form-group">
-          <label>Garantía (días desde la entrega)</label>
-          <input name="warrantyDays" type="number" min="0" step="1" inputmode="numeric"
-            placeholder="Ej: 30" value="${r.warrantyDays!=null?r.warrantyDays:(existing?'':(DB.settings.defaultWarrantyDays||''))}">
-          <p class="muted small" style="margin:6px 2px 0">La garantía comienza a contar el día que marques el equipo como <b>Entregado</b>.</p>
-        </div>
         ${naWrap('notes','Notas',`<textarea name="notes">${escape(r.notes||'')}</textarea>`,naFields)}
 
-        ${sectionDivider('Piezas usadas')}
+        ${sectionDivider('Piezas a sustituir')}
         <p class="muted small" style="margin:-4px 2px 10px">Selecciona la pieza que cambiaste (puerto, mica, batería, etc.). Solo aparecen las piezas que has <b>comprado</b> en <b>Compra/Venta</b>. El costo unitario se toma automáticamente de tus compras. Si no cambiaste ninguna pieza, deja la lista vacía.</p>
         <div id="partsList" class="parts-list"></div>
         <button type="button" class="btn-secondary btn-inline" id="addPartBtn">${ICONS.plus} Añadir pieza</button>
@@ -681,6 +723,36 @@ const Views = (() => {
     };
     renderParts();
 
+    // ===== Lógica de garantía dependiente de la fecha de entrega =====
+    function syncWarrantyAvailability(){
+      const dueEl = document.getElementById('dueDateInput');
+      const wEl = document.getElementById('warrantyDaysInput');
+      const hint = document.getElementById('warrantyHint');
+      if(!dueEl || !wEl || !hint) return;
+      const val = dueEl.value;
+      if(val){
+        const t0 = new Date(); t0.setHours(0,0,0,0);
+        const due = new Date(val+'T12:00:00').getTime();
+        if(due < t0.getTime()){
+          wEl.value = '';
+          wEl.disabled = true;
+          wEl.placeholder = 'Sin garantía';
+          hint.innerHTML = '<b>Sin garantía:</b> la fecha de entrega ya pasó, no se aplica garantía.';
+          hint.style.color = '#ff9b8b';
+          return;
+        }
+      }
+      wEl.disabled = false;
+      wEl.placeholder = 'Ej: 30';
+      hint.innerHTML = 'La garantía comienza el día que marques el equipo como <b>Entregado</b>.';
+      hint.style.color = '';
+    }
+    const dueEl = document.getElementById('dueDateInput');
+    if(dueEl) dueEl.addEventListener('change', syncWarrantyAvailability);
+    syncWarrantyAvailability();
+
+
+
 
 
     // Submit
@@ -725,12 +797,23 @@ const Views = (() => {
         data.clientPhones = cleanPhones;
         data.clientPhone = cleanPhones[0] || null;
         const due = fd.get('dueDate');
-        data.dueDate = due ? new Date(due).getTime() : null;
+        data.dueDate = due ? new Date(due+'T12:00:00').getTime() : null;
+        const cAt = fd.get('createdAt');
+        if(cAt){
+          // Conservar hora original si existe, si no usar mediodía
+          const orig = r.createdAt ? new Date(r.createdAt) : null;
+          const nd = new Date(cAt+'T12:00:00');
+          if(orig){ nd.setHours(orig.getHours(), orig.getMinutes(), orig.getSeconds(), 0); }
+          data.createdAt = nd.getTime();
+        }
         const price = fd.get('price'); const dep = fd.get('deposit');
         data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
         data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
         const wd = fd.get('warrantyDays');
-        data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
+        // Si la fecha de entrega ya pasó (anterior a hoy), no aplica garantía
+        const today0 = new Date(); today0.setHours(0,0,0,0);
+        const dueBeforeToday = data.dueDate && data.dueDate < today0.getTime();
+        data.warrantyDays = (!dueBeforeToday && wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
         data.devicePhotos = photos.device;
         data.devicePhoto = photos.device[0] || null;
         data.clientPhoto = photos.client;
@@ -1027,15 +1110,18 @@ const Views = (() => {
 
   // ============= BUSCAR =============
   function search(){
+    const sortKey = Views._searchSort || 'recent';
     view().innerHTML = `
       <div class="search-bar">${ICONS.search}
         <input id="searchInput" placeholder="Buscar cliente, equipo, teléfono o ID..." autofocus>
       </div>
+      ${sortSelectHtml('searchSort', sortKey)}
       <div id="searchResults"></div>`;
     const input = document.getElementById('searchInput');
     const results = document.getElementById('searchResults');
+    const sortSel = document.getElementById('searchSort');
     function render(q){
-      const list = DB.search(q);
+      const list = applySort(DB.search(q), Views._searchSort||'recent');
       results.innerHTML = list.length ? list.map(repairCard).join('') : emptyState('Sin resultados','Prueba con otro término');
       results.querySelectorAll('.repair-card').forEach(c=>c.addEventListener('click',e=>{
         if(e.target.closest('[data-stop]')) return;
@@ -1047,7 +1133,9 @@ const Views = (() => {
     }
     render('');
     input.addEventListener('input', e=>render(e.target.value));
+    sortSel.addEventListener('change', e=>{ Views._searchSort = e.target.value; render(input.value); });
   }
+
 
   // ============= ADMIN =============
   function admin(){
@@ -1069,7 +1157,8 @@ const Views = (() => {
       {id:'adm-devices', t:'Equipos',         s:'Catálogo de equipos',    i:ICONS.box},
       {id:'adm-products',t:'Productos',       s:'Piezas y artículos',     i:ICONS.box},
       {id:'adm-warranty',t:'Garantía',        s:'Días por defecto',       i:ICONS.check},
-      {id:'adm-stats',   t:'Estadísticas',    s:'Ganancia · inversión',   i:ICONS.edit}
+      {id:'adm-stats',   t:'Estadísticas',    s:'Ganancia · inversión',   i:ICONS.edit},
+      {id:'adm-audit',   t:'Auditoría',       s:'Comprobar todo',         i:ICONS.cloud}
     ];
     const menuHtml = `
       <div class="admin-menu">
@@ -1239,6 +1328,16 @@ const Views = (() => {
           <button class="btn-secondary" id="goStatsBtn">Ir a Compra/Venta</button>
         </div>
       </div>
+
+      <div class="admin-card audit-card" id="adm-audit">
+        <h3>Auditoría del sistema</h3>
+        <p>Recalcula <b>todo</b> el sistema desde cero: compras, ventas, reparaciones, piezas y stock — y te avisa si algo no cuadra. Se ejecuta también automáticamente cada vez que entras.</p>
+        <button class="btn-primary btn-audit" id="runAuditBtn" type="button">
+          <span class="audit-ico">${ICONS.check}</span>
+          <span>Calcular todo el sistema</span>
+        </button>
+        <p class="muted small" style="margin-top:10px">Comprueba: cuentas de ventas y compras, ganancia, piezas usadas, stock disponible, reparaciones entregadas sin precio, fechas inválidas y más.</p>
+      </div>
     `;
 
     // Menú elegante: scroll suave a cada sección
@@ -1297,6 +1396,8 @@ const Views = (() => {
     if(gs) gs.onclick = ()=> App.go('sales');
     const gsm = document.getElementById('goSummaryBtn');
     if(gsm) gsm.onclick = ()=> App.go('summary');
+    const auditBtn = document.getElementById('runAuditBtn');
+    if(auditBtn) auditBtn.onclick = ()=> Views.openAudit();
 
 
 
@@ -2016,5 +2117,88 @@ const Views = (() => {
     });
   }
 
-  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, summary, newTransaction, newChooser };
+  // ============= AUDITORÍA DEL SISTEMA =============
+  function runSystemAudit(){
+    const s = computeAllStats();
+    const total = s.total;
+    const repairs = DB.repairs;
+    const txs = DB.transactions;
+    const issues = [];
+    const ps = DB.productStats ? DB.productStats() : {};
+    for(const n in ps){
+      const it = ps[n];
+      const stock = (it.purchased||0) - (it.sold||0) - (it.usedInRepairs||0);
+      if(stock < 0) issues.push(`Stock negativo en "${n}": faltan ${Math.abs(stock)} unidades. Registra una compra.`);
+      if(it.min && stock < it.min && stock>=0) issues.push(`Stock bajo en "${n}": ${stock} (mínimo ${it.min}).`);
+    }
+    for(const r of repairs){
+      if(r.status==='delivered' && (r.price==null || r.price==='')) issues.push(`Reparación ${r.id} entregada sin precio asignado.`);
+      if(r.deposit!=null && r.price!=null && Number(r.deposit) > Number(r.price)) issues.push(`Reparación ${r.id}: anticipo ($${Number(r.deposit).toFixed(2)}) supera al precio ($${Number(r.price).toFixed(2)}).`);
+      if(r.dueDate && r.createdAt){
+        const c0 = new Date(r.createdAt); c0.setHours(0,0,0,0);
+        if(r.dueDate < c0.getTime()) issues.push(`Reparación ${r.id}: fecha de entrega anterior a la fecha de entrada.`);
+      }
+    }
+    for(const t of txs){
+      const q = Number(t.quantity||0), u = Number(t.unitPrice||0), tot = Number(t.total||0);
+      if(q>0 && u>0 && Math.abs(q*u - tot) > 0.05) issues.push(`Movimiento ${t.id}: total $${tot.toFixed(2)} no coincide con ${q}×$${u.toFixed(2)}.`);
+    }
+    return {
+      stats: s,
+      totals: {
+        repairs: repairs.length,
+        delivered: repairs.filter(r=>r.status==='delivered').length,
+        pendingPayments: total.pendingRepair,
+        salesIncome: total.salesIncome,
+        salesProfit: total.salesProfit,
+        purchases: total.purchases,
+        repairIncome: total.repairIncome,
+        repairProfit: total.repairProfit,
+        totalProfit: total.totalProfit,
+        countSales: total.countSales,
+        countPurchases: total.countPurchases
+      },
+      issues
+    };
+  }
+
+  function auditReportHtml(a){
+    const t = a.totals;
+    const okBadge = a.issues.length===0
+      ? '<span class="audit-badge ok">✓ Todo consistente</span>'
+      : `<span class="audit-badge warn">⚠ ${a.issues.length} aviso(s)</span>`;
+    const issuesHtml = a.issues.length
+      ? `<ul class="audit-issues">${a.issues.map(i=>`<li>${escape(i)}</li>`).join('')}</ul>`
+      : `<p class="muted small">No se detectaron inconsistencias. Las cifras de compras, ventas y reparaciones cuadran perfectamente.</p>`;
+    return `
+      <h2 style="margin:0 0 4px;font-size:20px">Auditoría del sistema</h2>
+      <p class="muted small" style="margin:0 0 12px">Recalculado en tiempo real desde compras, ventas y reparaciones. ${okBadge}</p>
+      <div class="audit-grid">
+        <div class="audit-tile"><span>Ingresos por ventas</span><b>${fmtMoney(t.salesIncome)}</b><em>${t.countSales} venta(s)</em></div>
+        <div class="audit-tile"><span>Inversión en compras</span><b>${fmtMoney(t.purchases)}</b><em>${t.countPurchases} compra(s)</em></div>
+        <div class="audit-tile"><span>Reparaciones cobradas</span><b>${fmtMoney(t.repairIncome)}</b><em>${t.delivered} entregadas</em></div>
+        <div class="audit-tile"><span>Por cobrar</span><b>${fmtMoney(t.pendingPayments)}</b><em>reparaciones sin entregar</em></div>
+        <div class="audit-tile gold"><span>Ganancia total</span><b>${fmtMoney(t.totalProfit)}</b><em>ventas + servicios − costos</em></div>
+        <div class="audit-tile"><span>Reparaciones totales</span><b>${t.repairs}</b><em>en el sistema</em></div>
+      </div>
+      <div class="section-title">Avisos</div>
+      ${issuesHtml}
+    `;
+  }
+
+  function openAudit(){
+    const a = runSystemAudit();
+    UI.openModal(auditReportHtml(a));
+  }
+
+  function autoAuditOnLoad(){
+    try{
+      const a = runSystemAudit();
+      if(a.issues.length){
+        UI.toast(`Auditoría: ${a.issues.length} aviso(s) — revisa Administración.`);
+      }
+    }catch(e){}
+  }
+
+  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, summary, newTransaction, newChooser, runSystemAudit, openAudit, autoAuditOnLoad };
 })();

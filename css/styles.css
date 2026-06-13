@@ -19,10 +19,10 @@
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:15px;line-height:1.4;min-height:100vh;overflow-x:hidden;width:100%;max-width:100vw}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--font);font-size:16px;line-height:1.45;min-height:100vh;overflow-x:hidden;width:100%;max-width:100vw}
 .hidden{display:none!important}
 button{font-family:inherit}
-input,select,textarea{font-family:inherit;font-size:15px;max-width:100%}
+input,select,textarea{font-family:inherit;font-size:16px;max-width:100%}
 
 /* Icons */
 .ico{width:26px;height:26px;fill:currentColor;display:block;flex-shrink:0}
@@ -188,6 +188,8 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 /* Stat cards */
 .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:8px}
 .stats-grid.two{grid-template-columns:repeat(2,1fr)}
+.stats-grid.three{grid-template-columns:repeat(3,1fr)}
+@media(max-width:520px){.stats-grid.three{grid-template-columns:repeat(2,1fr)}}
 .stat-card{
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
   padding:14px 10px;text-align:center;cursor:pointer;transition:transform .1s;min-width:0
@@ -198,6 +200,11 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .stat-card .stat-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
 .stat-card.warn .ico{color:#e8b94a}
 .stat-card.success .ico{color:#4cc973}
+.stat-card.inprogress .ico{color:#5fb0ff}
+.stat-card.delivered .ico{color:#9b7bff}
+.stat-card.cancelled .ico{color:#ff7b6b}
+.filter-bar{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
+@media(max-width:520px){.filter-bar{grid-template-columns:1fr}}
 .stat-card.pending .ico{color:#ff7b6b}
 
 /* Repair card */
@@ -946,13 +953,32 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .forgot-link{background:none;border:0;color:var(--primary-glow);font-size:13px;margin-top:10px;cursor:pointer;text-decoration:underline;padding:6px;width:100%}
 .forgot-link:hover{color:var(--brown-glow)}
 
-.admin-menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin-bottom:18px}
-.adm-tile{background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:14px;padding:12px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;color:var(--text);transition:transform .12s,border-color .15s,box-shadow .15s;text-align:center}
+.admin-menu{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}
+.adm-tile{background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:14px;padding:14px 8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;cursor:pointer;color:var(--text);transition:transform .12s,border-color .15s,box-shadow .15s;text-align:center;min-height:96px}
 .adm-tile:hover,.adm-tile:active{border-color:var(--primary-glow);transform:translateY(-2px);box-shadow:0 6px 18px rgba(122,31,31,.25)}
 .adm-tile .adm-ico{color:var(--primary-glow);display:flex}
-.adm-tile .adm-ico svg{width:24px;height:24px}
-.adm-tile .adm-t{font-weight:700;font-size:12px;line-height:1.15}
-.adm-tile .adm-s{font-size:10px;color:var(--muted);line-height:1.2}
+.adm-tile .adm-ico svg{width:26px;height:26px}
+.adm-tile .adm-t{font-weight:700;font-size:13px;line-height:1.15}
+.adm-tile .adm-s{font-size:11px;color:var(--muted);line-height:1.2}
+
+/* ===== Auditoría ===== */
+.audit-card{border-left:3px solid var(--primary-glow);background:linear-gradient(90deg,rgba(122,31,31,.10),var(--surface))}
+.btn-audit{display:flex;align-items:center;justify-content:center;gap:10px;padding:14px;font-size:15px;letter-spacing:.4px;background:linear-gradient(135deg,var(--primary),var(--primary-glow));border:0;border-radius:14px;color:#fff;font-weight:700;cursor:pointer;box-shadow:0 8px 20px rgba(122,31,31,.30);transition:transform .1s,box-shadow .15s;width:100%}
+.btn-audit:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(122,31,31,.40)}
+.btn-audit .audit-ico{display:flex}
+.btn-audit .audit-ico svg{width:20px;height:20px;fill:currentColor}
+.audit-badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.4px;margin-left:6px;vertical-align:middle}
+.audit-badge.ok{background:rgba(76,201,115,.18);color:#4cc973;border:1px solid rgba(76,201,115,.35)}
+.audit-badge.warn{background:rgba(232,185,74,.18);color:#e8b94a;border:1px solid rgba(232,185,74,.35)}
+.audit-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:10px 0 14px}
+.audit-tile{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:2px}
+.audit-tile span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.audit-tile b{font-size:16px;font-weight:700}
+.audit-tile em{font-style:normal;font-size:11px;color:var(--muted)}
+.audit-tile.gold{background:linear-gradient(135deg,rgba(224,213,181,.10),var(--surface-2));border-color:rgba(224,213,181,.3)}
+.audit-tile.gold b{color:#e0d5b5}
+.audit-issues{margin:6px 0 0;padding-left:18px;font-size:13px;color:#e8b94a}
+.audit-issues li{margin-bottom:4px}
 
 .admin-card.flash{animation:flashCard 1.4s ease}
 @keyframes flashCard{0%{box-shadow:0 0 0 0 rgba(155,42,42,.55)}50%{box-shadow:0 0 0 6px rgba(155,42,42,.18)}100%{box-shadow:0 0 0 0 rgba(155,42,42,0)}}
