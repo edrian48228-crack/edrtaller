@@ -1693,7 +1693,9 @@ const Views = (() => {
       total:a.total.repairIncome, pending:a.total.pendingRepair, countDel:a.total.countRepairs
     };
   }
-
+  function totalProfitNow(){
+    try { return computeAllStats().total.totalProfit || 0; } catch(e){ return 0; }
+  }
 
   function txCard(t){
     const isSale = t.type==='sale';
@@ -1708,7 +1710,12 @@ const Views = (() => {
       const profit = total - Number(t.costTotal||0);
       const pcls = profit>=0 ? 'pos' : 'neg';
       profitHtml = `<span class="tx-profit ${pcls}">Ganancia $ ${profit.toFixed(2)}</span>`;
+    } else if(!isSale){
+      profitHtml = `<span class="tx-profit neg">Inversión $ ${total.toFixed(2)}</span>`;
     }
+    const gT = totalProfitNow();
+    const gCls = gT>=0 ? 'pos' : 'neg';
+    const generalHtml = `<span class="tx-profit ${gCls}" title="Ganancia total acumulada del negocio">G. general $ ${gT.toFixed(2)}</span>`;
     return `
       <div class="tx-card ${cls}" data-tx-id="${escape(t.id)}">
         <div class="tx-info">
@@ -1719,6 +1726,7 @@ const Views = (() => {
           <h3>${escape(t.product||'Producto')}</h3>
           <p class="muted small">${qty} × $ ${unit.toFixed(2)}${cp}</p>
           <p class="muted small">${fmtDate(t.date||t.createdAt)} ${profitHtml}</p>
+          <p class="muted xsmall" style="margin-top:2px">${generalHtml}</p>
         </div>
         <div class="tx-amount ${cls}">${sign} $ ${total.toFixed(2)}</div>
       </div>`;
@@ -1873,9 +1881,19 @@ const Views = (() => {
   }
 
   function summary(){
+    const _stats = computeAllStats();
+    const _gT = _stats.total.totalProfit;
+    const _gCls = _gT>=0 ? 'pos' : 'neg';
     view().innerHTML = `
       <div class="greeting">Resumen <span>financiero</span></div>
       <p class="muted small" style="margin:-8px 4px 14px">Ganancias, ingresos y reparaciones — todo con explicación de dónde sale cada cifra.</p>
+
+      <div class="profit-hero ${_gCls}">
+        <span class="ph-label">Ganancia total acumulada</span>
+        <span class="ph-amount">$ ${_gT.toFixed(2)}</span>
+        <span class="ph-help">Ventas + servicios − costos · de todo el historial</span>
+      </div>
+
 
       <div class="acc-card cv-stats-card open">
         <button class="acc-head" data-acc type="button">
@@ -2132,8 +2150,15 @@ const Views = (() => {
       saleExtras = `
         <div class="detail-row"><span class="lbl">Costo unit.</span><span class="val">$ ${unitCost.toFixed(2)}</span></div>
         <div class="detail-row"><span class="lbl">Inversión</span><span class="val">$ ${invTotal.toFixed(2)}</span></div>
-        <div class="detail-row"><span class="lbl">Ganancia</span><span class="val tx-profit ${pcls}">$ ${profit.toFixed(2)}</span></div>`;
+        <div class="detail-row"><span class="lbl">Ganancia de esta venta</span><span class="val tx-profit ${pcls}">$ ${profit.toFixed(2)}</span></div>`;
+    } else if(!isSale){
+      saleExtras = `
+        <div class="detail-row"><span class="lbl">Inversión</span><span class="val tx-profit neg">$ ${total.toFixed(2)}</span></div>
+        <div class="detail-row"><span class="lbl">Ganancia de esta compra</span><span class="val muted">— (se realiza al vender o usar la pieza)</span></div>`;
     }
+    const _gT = totalProfitNow();
+    const _gCls = _gT>=0 ? 'pos' : 'neg';
+    const generalRow = `<div class="detail-row"><span class="lbl">Ganancia general</span><span class="val tx-profit ${_gCls}">$ ${_gT.toFixed(2)}</span></div>`;
     UI.openModal(`
       <h2 style="margin:0 0 4px;font-size:20px">${escape(t.product||'Producto')}</h2>
       <p class="muted" style="margin:0 0 14px">${escape(t.id)} · <span class="tx-badge ${isSale?'sale':'purchase'}">${txLabel(t.type)}</span></p>
@@ -2141,6 +2166,7 @@ const Views = (() => {
       <div class="detail-row"><span class="lbl">Precio unit.</span><span class="val">$ ${Number(t.unitPrice||0).toFixed(2)}</span></div>
       <div class="detail-row"><span class="lbl">Total</span><span class="val tx-amount ${isSale?'sale':'purchase'}">${sign} $ ${total.toFixed(2)}</span></div>
       ${saleExtras}
+      ${generalRow}
       <div class="detail-row"><span class="lbl">Fecha</span><span class="val">${fmtDate(t.date||t.createdAt)}</span></div>
       <div class="detail-row"><span class="lbl">${isSale?'Cliente':'Proveedor'}</span><span class="val">${t.counterparty?escape(t.counterparty):'<span class="muted">—</span>'}</span></div>
       <div class="detail-row"><span class="lbl">Notas</span><span class="val">${t.notes?escape(t.notes):'<span class="muted">—</span>'}</span></div>

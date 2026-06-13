@@ -1166,3 +1166,18 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
   padding:4px 8px;border-radius:6px
 }
 .gh-log-actions button:hover{background:rgba(255,255,255,.04);color:var(--text)}
+
+/* Hero ganancia total — Resumen */
+.profit-hero{
+  display:flex;flex-direction:column;gap:4px;
+  padding:16px 18px;margin:6px 4px 16px;
+  border-radius:16px;
+  background:linear-gradient(135deg,rgba(76,201,115,.12),rgba(122,31,31,.12));
+  border:1px solid var(--border);
+  box-shadow:0 6px 20px rgba(0,0,0,.25)
+}
+.profit-hero .ph-label{font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600}
+.profit-hero .ph-amount{font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.profit-hero.pos .ph-amount{color:#7be0a0;text-shadow:0 0 14px rgba(76,201,115,.25)}
+.profit-hero.neg .ph-amount{color:#ff9b8b}
+.profit-hero .ph-help{font-size:11px;color:var(--muted)}
