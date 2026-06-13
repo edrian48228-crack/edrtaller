@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="css/styles.css?v=17" />
+  <link rel="stylesheet" href="css/styles.css?v=18" />
 </head>
 <body>
   <!-- LOGIN -->
@@ -67,7 +67,8 @@
         <svg viewBox="0 0 24 24" class="ico"><path d="M22 7l-5-5-3 3 5 5 3-3zM2 22l8.5-8.5 2.5 2.5L4.5 24.5 2 22zm10-10l5 5L7 27H2v-5l10-10z"/></svg>
         <span>Reparaciones</span>
       </button>
-      <button class="tab fab-tab" data-view="chooser">
+      <span class="tab tab-spacer" aria-hidden="true"></span>
+      <button class="tab fab-tab" data-view="chooser" aria-label="Agregar">
         <svg viewBox="0 0 24 24" class="ico"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
       </button>
       <button class="tab" data-view="summary">
@@ -97,12 +98,12 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="js/db.js?v=17"></script>
-  <script src="js/sync.js?v=17"></script>
-  <script src="js/auth.js?v=17"></script>
-  <script src="js/ui.js?v=17"></script>
-  <script src="js/views.js?v=17"></script>
-  <script src="js/app.js?v=17"></script>
+  <script src="js/db.js?v=18"></script>
+  <script src="js/sync.js?v=18"></script>
+  <script src="js/auth.js?v=18"></script>
+  <script src="js/ui.js?v=18"></script>
+  <script src="js/views.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

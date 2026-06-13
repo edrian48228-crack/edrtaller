@@ -209,6 +209,7 @@ const DB = (() => {
     },
     deleteRepair(id){
       data.repairs = data.repairs.filter(r=>r.id!==id);
+      try{ window.GitSync && window.GitSync.markDeleted && window.GitSync.markDeleted(id); }catch(e){}
       save();
     },
     findRepair(id){ return data.repairs.find(r=>r.id===id); },

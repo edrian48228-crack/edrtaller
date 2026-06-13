@@ -1245,25 +1245,42 @@ const Views = (() => {
           <h3 style="margin:0">${ICONS.cloud} Sincronización GitHub</h3>
           <label class="switch"><input type="checkbox" id="ghEnabled" ${g.enabled?'checked':''}><span class="slider"></span></label>
         </div>
-        <p>Sube/baja un JSON con todos tus datos (incluye fotos y audios embebidos — al moverlo nada se pierde).</p>
+        <p>Cada reparación se guarda en su <b>propio archivo</b> dentro del repositorio (<code>repairs/Rxxxx.json</code>), con sus fotos, audio y texto aislados — nunca se mezcla con otras. Los ajustes y transacciones viajan en <code>index.json</code>.</p>
         <div class="form-row">
           <div class="form-group"><label>Usuario / org</label><input id="ghUser" value="${escape(g.user)}" placeholder="tu-usuario"></div>
           <div class="form-group"><label>Repositorio</label><input id="ghRepo" value="${escape(g.repo)}" placeholder="taller-datos"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Rama</label><input id="ghBranch" value="${escape(g.branch||'main')}" placeholder="main"></div>
-          <div class="form-group"><label>Ruta del archivo</label><input id="ghPath" value="${escape(g.path||'taller-data.json')}"></div>
+          <div class="form-group"><label>Carpeta base</label><input id="ghPath" value="${escape(g.path||'taller-data')}" placeholder="taller-data"></div>
         </div>
-        <div class="form-group"><label>Token (se guarda solo en este dispositivo)</label><input id="ghToken" type="password" value="${escape(g.token||'')}" placeholder="github_pat_..."></div>
+        <div class="form-group"><label>Token (Fine-grained · Contents: read/write)</label><input id="ghToken" type="password" value="${escape(g.token||'')}" placeholder="github_pat_..."></div>
         <div class="form-group">
           <label class="inline-check"><input type="checkbox" id="ghAuto" ${g.autoSync?'checked':''}> Sincronización automática al guardar</label>
         </div>
-        <div class="btn-row">
-          <button class="btn-secondary" id="ghTest">Probar</button>
-          <button class="btn-secondary" id="ghPull">Bajar de GitHub</button>
+
+        <div class="gh-panel" id="ghPanel">
+          <div class="gh-head">
+            <span class="gh-dot"></span>
+            <span class="gh-status" id="ghStatusText">Listo</span>
+          </div>
+          <div class="gh-actions">
+            <button class="btn-secondary" id="ghTest">${ICONS.check||''} Probar conexión</button>
+            <button class="btn-secondary" id="ghPull">${ICONS.cloud} Bajar todo</button>
+            <button class="btn-primary"   id="ghPush" style="grid-column:1/-1">${ICONS.save||''} Subir / sincronizar todo</button>
+          </div>
+          <div class="gh-progress" id="ghProgress"><i></i></div>
+          <div class="gh-meta" id="ghMeta">
+            <span class="pill">Repo<b id="mRepo">—</b></span>
+            <span class="pill">Rama<b id="mBranch">—</b></span>
+            <span class="pill">Base<b id="mBase">—</b></span>
+            <span class="pill">Última sync<b id="mLast">${g.lastSyncAt?fmtDateTime(g.lastSyncAt):'nunca'}</b></span>
+          </div>
+          <div class="gh-log-actions">
+            <button id="ghLogClear">Limpiar registro</button>
+          </div>
+          <div class="gh-log" id="ghLog" aria-live="polite"></div>
         </div>
-        <button class="btn-primary" id="ghPush" style="margin-top:8px">Subir ahora a GitHub</button>
-        <p class="muted small" style="margin-top:10px">Última sincronización: ${g.lastSyncAt?fmtDateTime(g.lastSyncAt):'nunca'}</p>
       </div>
 
       ${typeof LocalFile !== 'undefined' ? `
@@ -1472,18 +1489,81 @@ const Views = (() => {
     ['ghEnabled','ghUser','ghRepo','ghBranch','ghPath','ghToken','ghAuto'].forEach(id=>{
       document.getElementById(id).addEventListener('change', ()=> DB.updateGithub(readGh()));
     });
-    document.getElementById('ghTest').onclick = async ()=>{
+    // ===== Panel moderno: log en vivo, progreso, estado =====
+    const panel = document.getElementById('ghPanel');
+    const logEl = document.getElementById('ghLog');
+    const statusEl = document.getElementById('ghStatusText');
+    const progressEl = document.getElementById('ghProgress');
+    const progressBar = progressEl ? progressEl.querySelector('i') : null;
+    const mRepo = document.getElementById('mRepo');
+    const mBranch = document.getElementById('mBranch');
+    const mBase = document.getElementById('mBase');
+    const mLast = document.getElementById('mLast');
+    function updateMeta(){
+      const gg = DB.settings.github;
+      mRepo.textContent = (gg.user && gg.repo) ? `${gg.user}/${gg.repo}` : '—';
+      mBranch.textContent = gg.branch || 'main';
+      mBase.textContent = GitSync.basePath();
+      mLast.textContent = gg.lastSyncAt ? fmtDateTime(gg.lastSyncAt) : 'nunca';
+    }
+    updateMeta();
+    function setStatus(level, txt){
+      panel.classList.remove('gh-on','gh-err','gh-busy');
+      if(level) panel.classList.add('gh-'+level);
+      if(txt) statusEl.textContent = txt;
+    }
+    function setProgress(done,total){
+      if(!progressEl) return;
+      if(!total){ progressEl.classList.remove('on'); progressBar.style.width='0%'; return; }
+      progressEl.classList.add('on');
+      const pct = Math.min(100, Math.round(done*100/total));
+      progressBar.style.width = pct+'%';
+      if(done>=total) setTimeout(()=>{ progressEl.classList.remove('on'); progressBar.style.width='0%'; }, 700);
+    }
+    function fmtTime(ms){
+      const d = new Date(ms);
+      return d.toLocaleTimeString('es-ES',{hour12:false}) + '.' + String(d.getMilliseconds()).padStart(3,'0').slice(0,3);
+    }
+    function renderLog(entries){
+      const html = entries.slice(-200).map(e =>
+        `<div class="gh-line lv-${e.level}"><span class="gh-t">${fmtTime(e.t)}</span><span class="gh-tag">${escape(e.tag)}</span><span class="gh-msg">${escape(e.msg)}</span></div>`
+      ).join('');
+      logEl.innerHTML = html;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    const unsubLog = GitLog.subscribe(renderLog);
+    // Cancela una suscripción previa para evitar fugas al re-renderizar admin
+    if(window.__ghUnsub) try{ window.__ghUnsub(); }catch(_){}
+    window.__ghUnsub = unsubLog;
+    document.getElementById('ghLogClear').onclick = ()=> GitLog.clear();
+
+    async function runOp(name, fn){
+      setStatus('busy', name+'…');
+      try{
+        const res = await fn();
+        setStatus('on', name+' OK');
+        UI.toast(name+' completada');
+        updateMeta();
+        return res;
+      }catch(e){
+        GitLog.err('error', e.message);
+        setStatus('err', 'Error: '+e.message);
+        UI.toast('Error: '+e.message);
+      }
+    }
+
+    document.getElementById('ghTest').onclick = ()=>{
       DB.updateGithub(readGh());
-      try{ await GitSync.test(); UI.toast('Conexión OK'); }catch(e){ UI.toast('Error: '+e.message); }
+      runOp('Conexión', ()=> GitSync.test());
     };
-    document.getElementById('ghPush').onclick = async ()=>{
+    document.getElementById('ghPush').onclick = ()=>{
       DB.updateGithub(readGh());
-      try{ await GitSync.push(); UI.toast('Subido a GitHub'); App.refresh(); }catch(e){ UI.toast('Error: '+e.message); }
+      runOp('Subida', ()=> GitSync.push({ onProgress:setProgress }));
     };
     document.getElementById('ghPull').onclick = async ()=>{
       DB.updateGithub(readGh());
-      if(!confirm('Esto reemplazará tus datos locales con los de GitHub. ¿Continuar?')) return;
-      try{ await GitSync.pull(); UI.toast('Datos descargados'); App.refresh(); }catch(e){ UI.toast('Error: '+e.message); }
+      if(!confirm('Esto reemplazará tus reparaciones locales con las del repositorio. ¿Continuar?')) return;
+      runOp('Descarga', ()=> GitSync.pull({ onProgress:setProgress }));
     };
 
     if(typeof LocalFile !== 'undefined' && localSupported){
