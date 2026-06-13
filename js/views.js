@@ -216,27 +216,6 @@ const Views = (() => {
         <div class="stat-card delivered" data-go="repairs:delivered" title="Entregadas al cliente">${ICONS.box}<div class="stat-num">${delivered}</div><div class="stat-lbl">Entregadas</div></div>
         <div class="stat-card cancelled" data-go="repairs:cancelled" title="Reparaciones canceladas">${ICONS.cancel}<div class="stat-num">${cancelled}</div><div class="stat-lbl">Canceladas</div></div>
       </div>
-
-      <div class="acc-card cv-stats-card">
-        <button class="acc-head" data-acc type="button">
-          <span class="acc-ico">${ICONS.box}</span>
-          <span class="acc-title">Resumen financiero</span>
-          <span class="acc-sub">Ganancia neta, ventas y servicios por periodo</span>
-          <span class="acc-chev"></span>
-        </button>
-        <div class="acc-body">${cvStatsTilesHtml()}</div>
-      </div>
-
-      <div class="acc-card">
-        <button class="acc-head" data-acc type="button">
-          <span class="acc-ico">${ICONS.edit}</span>
-          <span class="acc-title">Reparaciones cobradas</span>
-          <span class="acc-sub">Total de reparaciones · ingresos por servicios entregados</span>
-          <span class="acc-chev"></span>
-        </button>
-        <div class="acc-body">${sysStatsTilesHtml()}</div>
-      </div>
-
       ${sectionDivider('Recientes', recent.length||0)}
       ${sortSelectHtml('dashSort', sortKey)}
       ${recent.length ? recent.map(repairCard).join('') : emptyState('Aún no hay reparaciones','Pulsa el botón + para registrar la primera')}
@@ -248,7 +227,6 @@ const Views = (() => {
     });
     const ds = document.getElementById('dashSort');
     if(ds) ds.addEventListener('change', e=>{ Views._dashSort = e.target.value; dashboard(); });
-    bindAccordions();
     bindRepairCards();
   }
 
@@ -1267,35 +1245,25 @@ const Views = (() => {
           <h3 style="margin:0">${ICONS.cloud} Sincronización GitHub</h3>
           <label class="switch"><input type="checkbox" id="ghEnabled" ${g.enabled?'checked':''}><span class="slider"></span></label>
         </div>
-        <p>Cada usuario guarda sus datos en su propio espacio dentro del repo: fotos, audios y textos quedan aislados — nunca se mezclan con los de otros.</p>
+        <p>Sube/baja un JSON con todos tus datos (incluye fotos y audios embebidos — al moverlo nada se pierde).</p>
         <div class="form-row">
           <div class="form-group"><label>Usuario / org</label><input id="ghUser" value="${escape(g.user)}" placeholder="tu-usuario"></div>
           <div class="form-group"><label>Repositorio</label><input id="ghRepo" value="${escape(g.repo)}" placeholder="taller-datos"></div>
         </div>
         <div class="form-row">
           <div class="form-group"><label>Rama</label><input id="ghBranch" value="${escape(g.branch||'main')}" placeholder="main"></div>
-          <div class="form-group"><label>Espacio de usuario (aislamiento)</label><input id="ghScope" value="${escape(g.scope||'')}" placeholder="se usa tu usuario si lo dejas vacío"></div>
+          <div class="form-group"><label>Ruta del archivo</label><input id="ghPath" value="${escape(g.path||'taller-data.json')}"></div>
         </div>
-        <div class="form-group"><label>Ruta del archivo</label><input id="ghPath" value="${escape(g.path||'taller-data.json')}"></div>
-        <div class="gh-effective-path">Ruta efectiva en el repo: <code id="ghEffPath">${escape(GitSync.effectivePath({...g}))}</code></div>
-        <div class="form-group" style="margin-top:10px"><label>Token (se guarda solo en este dispositivo)</label><input id="ghToken" type="password" value="${escape(g.token||'')}" placeholder="github_pat_..."></div>
+        <div class="form-group"><label>Token (se guarda solo en este dispositivo)</label><input id="ghToken" type="password" value="${escape(g.token||'')}" placeholder="github_pat_..."></div>
         <div class="form-group">
           <label class="inline-check"><input type="checkbox" id="ghAuto" ${g.autoSync?'checked':''}> Sincronización automática al guardar</label>
         </div>
         <div class="btn-row">
-          <button class="btn-secondary" id="ghTest">Probar conexión</button>
+          <button class="btn-secondary" id="ghTest">Probar</button>
           <button class="btn-secondary" id="ghPull">Bajar de GitHub</button>
         </div>
         <button class="btn-primary" id="ghPush" style="margin-top:8px">Subir ahora a GitHub</button>
-        <div class="gh-status-line"><span class="gh-status-dot" id="ghStatusDot"></span><span id="ghStatusTxt">Última sincronización: ${g.lastSyncAt?fmtDateTime(g.lastSyncAt):'nunca'}</span></div>
-
-        <div class="gh-log" aria-live="polite">
-          <div class="gh-log-head">
-            <b>Actividad en vivo</b>
-            <button type="button" class="gh-clear" id="ghLogClear">Limpiar</button>
-          </div>
-          <div class="gh-log-body" id="ghLogBody"></div>
-        </div>
+        <p class="muted small" style="margin-top:10px">Última sincronización: ${g.lastSyncAt?fmtDateTime(g.lastSyncAt):'nunca'}</p>
       </div>
 
       ${typeof LocalFile !== 'undefined' ? `
@@ -1498,19 +1466,11 @@ const Views = (() => {
         branch: document.getElementById('ghBranch').value.trim() || 'main',
         path: document.getElementById('ghPath').value.trim() || 'taller-data.json',
         token: document.getElementById('ghToken').value.trim(),
-        scope: document.getElementById('ghScope').value.trim(),
         autoSync: document.getElementById('ghAuto').checked
       };
     }
-    function refreshEffPath(){
-      const el = document.getElementById('ghEffPath');
-      if(el) el.textContent = GitSync.effectivePath(readGh());
-    }
-    ['ghEnabled','ghUser','ghRepo','ghBranch','ghPath','ghToken','ghAuto','ghScope'].forEach(id=>{
-      const el = document.getElementById(id);
-      if(!el) return;
-      el.addEventListener('change', ()=>{ DB.updateGithub(readGh()); refreshEffPath(); });
-      el.addEventListener('input',  ()=>{ refreshEffPath(); });
+    ['ghEnabled','ghUser','ghRepo','ghBranch','ghPath','ghToken','ghAuto'].forEach(id=>{
+      document.getElementById(id).addEventListener('change', ()=> DB.updateGithub(readGh()));
     });
     document.getElementById('ghTest').onclick = async ()=>{
       DB.updateGithub(readGh());
@@ -1518,43 +1478,13 @@ const Views = (() => {
     };
     document.getElementById('ghPush').onclick = async ()=>{
       DB.updateGithub(readGh());
-      try{ await GitSync.push(); UI.toast('Subido a GitHub'); renderGhStatus(); }catch(e){ UI.toast('Error: '+e.message); }
+      try{ await GitSync.push(); UI.toast('Subido a GitHub'); App.refresh(); }catch(e){ UI.toast('Error: '+e.message); }
     };
     document.getElementById('ghPull').onclick = async ()=>{
       DB.updateGithub(readGh());
       if(!confirm('Esto reemplazará tus datos locales con los de GitHub. ¿Continuar?')) return;
       try{ await GitSync.pull(); UI.toast('Datos descargados'); App.refresh(); }catch(e){ UI.toast('Error: '+e.message); }
     };
-
-    // === Panel de actividad en vivo ===
-    function renderGhLogs(){
-      const body = document.getElementById('ghLogBody');
-      if(!body) return;
-      const logs = GitSync.getLogs();
-      if(!logs.length){ body.innerHTML = '<div class="gh-log-empty">Sin actividad todavía. Usa Probar, Subir o Bajar para empezar.</div>'; return; }
-      body.innerHTML = logs.map(l=>{
-        const t = new Date(l.t).toLocaleTimeString();
-        return `<div class="gh-log-row ${escape(l.level)}"><span class="t">${escape(t)}</span><span class="m">${escape(l.msg)}</span></div>`;
-      }).join('');
-    }
-    function renderGhStatus(){
-      const dot = document.getElementById('ghStatusDot');
-      const txt = document.getElementById('ghStatusTxt');
-      if(!dot || !txt) return;
-      const st = GitSync.getStatus();
-      dot.classList.remove('on','err','busy');
-      if(st.busy){ dot.classList.add('busy'); txt.textContent = 'Sincronizando…'; return; }
-      if(st.lastError){ dot.classList.add('err'); txt.textContent = 'Último error: '+st.lastError; return; }
-      if(st.lastSyncAt){ dot.classList.add('on'); txt.textContent = 'Última sincronización: '+fmtDateTime(st.lastSyncAt); return; }
-      txt.textContent = 'Última sincronización: nunca';
-    }
-    renderGhLogs();
-    renderGhStatus();
-    // Suscripción única (se reemplaza en cada render del admin)
-    if(Views._ghUnsub){ try{ Views._ghUnsub(); }catch(_){} }
-    Views._ghUnsub = GitSync.onLog(()=>{ renderGhLogs(); renderGhStatus(); });
-    const clr = document.getElementById('ghLogClear');
-    if(clr) clr.onclick = ()=>{ GitSync.clearLogs(); renderGhLogs(); };
 
     if(typeof LocalFile !== 'undefined' && localSupported){
       const pl = document.getElementById('pickLoc');

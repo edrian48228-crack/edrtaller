@@ -1,44 +1,6 @@
 // GitHub Sync via Contents API + File System Access API para guardar local.
-// v18: aislamiento por usuario (scope) + registro de actividad en vivo.
 const GitSync = (() => {
   let pushTimer = null;
-  let busy = false;
-  let lastError = null;
-  const logs = [];       // {t:ts, level:'info|ok|err|warn', msg}
-  const listeners = new Set();
-  const MAX_LOGS = 80;
-
-  function emit(level, msg){
-    const entry = { t: Date.now(), level, msg: String(msg) };
-    logs.unshift(entry);
-    if(logs.length > MAX_LOGS) logs.length = MAX_LOGS;
-    if(level === 'err') lastError = msg; else if(level === 'ok') lastError = null;
-    listeners.forEach(fn => { try{ fn(entry, logs); }catch(_){} });
-  }
-  function onLog(fn){ listeners.add(fn); return ()=> listeners.delete(fn); }
-  function getLogs(){ return logs.slice(); }
-  function getStatus(){
-    return { busy, lastError, lastSyncAt: DB.settings.github.lastSyncAt };
-  }
-  function clearLogs(){ logs.length = 0; listeners.forEach(fn=>{ try{ fn(null, logs); }catch(_){} }); }
-
-  // Sanitiza scope para usarlo como segmento de ruta
-  function sanitizeScope(s){
-    return String(s||'').trim().toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-      .replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40);
-  }
-  // Devuelve la ruta efectiva en el repo (con prefijo de usuario si aplica)
-  function effectivePath(g){
-    g = g || DB.settings.github;
-    const base = (g.path||'taller-data.json').replace(/^\/+/,'');
-    const scope = sanitizeScope(g.scope || g.user || '');
-    if(!scope) return base;
-    // Evita doble prefijo si el usuario ya lo escribió
-    if(base.startsWith(`users/${scope}/`)) return base;
-    return `users/${scope}/${base}`;
-  }
-
   function api(path, init={}){
     const cfg = DB.settings.github;
     return fetch(`https://api.github.com${path}`, {
@@ -55,104 +17,69 @@ const GitSync = (() => {
     const g = DB.settings.github;
     return g.enabled && g.token && g.user && g.repo && g.path;
   }
-  function b64encode(str){ return btoa(unescape(encodeURIComponent(str))); }
-  function b64decode(b64){ return decodeURIComponent(escape(atob(b64.replace(/\n/g,'')))); }
-
+  function b64encode(str){
+    // unicode-safe base64
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+  function b64decode(b64){
+    return decodeURIComponent(escape(atob(b64.replace(/\n/g,''))));
+  }
   async function getRemoteSha(){
     const g = DB.settings.github;
-    const p = effectivePath(g);
-    const r = await api(`/repos/${g.user}/${g.repo}/contents/${encodeURIComponent(p)}?ref=${encodeURIComponent(g.branch||'main')}`);
+    const r = await api(`/repos/${g.user}/${g.repo}/contents/${encodeURIComponent(g.path)}?ref=${encodeURIComponent(g.branch||'main')}`);
     if(r.status===404) return { sha:null, content:null };
     if(!r.ok) throw new Error('GitHub '+r.status);
     const j = await r.json();
     return { sha:j.sha, content: b64decode(j.content) };
   }
-
   async function push(){
-    if(!cfgOk()){ emit('err','Configuración incompleta'); throw new Error('Configuración incompleta'); }
-    busy = true;
+    if(!cfgOk()) throw new Error('Configuración incompleta');
     const g = DB.settings.github;
-    const p = effectivePath(g);
-    emit('info', `Subiendo a ${g.user}/${g.repo}@${g.branch||'main'} → ${p}`);
-    try{
-      let sha = g.lastSha;
-      try{
-        const remote = await getRemoteSha();
-        sha = remote.sha;
-        if(sha) emit('info','Detectada versión remota previa, se actualizará');
-        else emit('info','No existía archivo remoto, se creará');
-      }catch(e){ emit('warn','No se pudo leer SHA remoto: '+e.message); }
-      const body = {
-        message: `taller: backup ${new Date().toISOString()}`,
-        content: b64encode(JSON.stringify(DB.all, null, 2)),
-        branch: g.branch || 'main'
-      };
-      if(sha) body.sha = sha;
-      const r = await api(`/repos/${g.user}/${g.repo}/contents/${encodeURIComponent(p)}`, {
-        method:'PUT', body: JSON.stringify(body)
-      });
-      if(!r.ok){
-        const t = await r.text();
-        emit('err', `Push falló (${r.status}): ${t.slice(0,160)}`);
-        throw new Error('Push falló: '+r.status);
-      }
-      const j = await r.json();
-      DB.updateGithub({ lastSha: j.content.sha, lastSyncAt: Date.now() });
-      emit('ok', `Subida completada · ${new Date().toLocaleTimeString()}`);
-      return true;
-    } finally { busy = false; }
-  }
-
-  async function pull(){
-    if(!cfgOk()){ emit('err','Configuración incompleta'); throw new Error('Configuración incompleta'); }
-    busy = true;
-    const g = DB.settings.github;
-    emit('info', `Descargando de ${g.user}/${g.repo} → ${effectivePath(g)}`);
+    let sha = g.lastSha;
     try{
       const remote = await getRemoteSha();
-      if(!remote.content){ emit('err','No hay archivo remoto aún'); throw new Error('No hay archivo remoto aún'); }
-      const ok = DB.importJson(remote.content);
-      if(!ok){ emit('err','JSON remoto inválido'); throw new Error('JSON remoto inválido'); }
-      DB.updateGithub({ lastSha: remote.sha, lastSyncAt: Date.now() });
-      emit('ok','Datos descargados y aplicados localmente');
-      return true;
-    } finally { busy = false; }
+      sha = remote.sha;
+    }catch(e){ /* primer push */ }
+    const body = {
+      message: `taller: backup ${new Date().toISOString()}`,
+      content: b64encode(JSON.stringify(DB.all, null, 2)),
+      branch: g.branch || 'main'
+    };
+    if(sha) body.sha = sha;
+    const r = await api(`/repos/${g.user}/${g.repo}/contents/${encodeURIComponent(g.path)}`, {
+      method:'PUT', body: JSON.stringify(body)
+    });
+    if(!r.ok){
+      const t = await r.text();
+      throw new Error('Push falló: '+r.status+' '+t.slice(0,200));
+    }
+    const j = await r.json();
+    DB.updateGithub({ lastSha: j.content.sha, lastSyncAt: Date.now() });
+    return true;
   }
-
+  async function pull(){
+    if(!cfgOk()) throw new Error('Configuración incompleta');
+    const remote = await getRemoteSha();
+    if(!remote.content) throw new Error('No hay archivo remoto aún');
+    const ok = DB.importJson(remote.content);
+    if(!ok) throw new Error('JSON remoto inválido');
+    DB.updateGithub({ lastSha: remote.sha, lastSyncAt: Date.now() });
+    return true;
+  }
   async function test(){
-    if(!cfgOk()){ emit('err','Completa todos los campos'); throw new Error('Completa todos los campos'); }
-    busy = true;
-    const g = DB.settings.github;
-    emit('info', `Probando conexión con ${g.user}/${g.repo}…`);
-    try{
-      const r = await api(`/repos/${g.user}/${g.repo}`);
-      if(!r.ok){ emit('err','No se pudo acceder al repo ('+r.status+')'); throw new Error('No se pudo acceder al repo ('+r.status+')'); }
-      const j = await r.json();
-      emit('ok',`Repo accesible · rama por defecto: ${j.default_branch}`);
-      // verifica rama
-      const br = await api(`/repos/${g.user}/${g.repo}/branches/${encodeURIComponent(g.branch||'main')}`);
-      if(br.ok) emit('ok',`Rama "${g.branch||'main'}" verificada`);
-      else emit('warn',`La rama "${g.branch||'main'}" no existe aún (se creará al subir)`);
-      // intenta listar el archivo
-      try{
-        const rs = await getRemoteSha();
-        if(rs.sha) emit('ok',`Archivo remoto encontrado · ${effectivePath(g)}`);
-        else emit('info',`Aún no hay archivo en ${effectivePath(g)} (se creará al subir)`);
-      }catch(e){ emit('warn','No se pudo leer el archivo: '+e.message); }
-      return true;
-    } finally { busy = false; }
+    if(!cfgOk()) throw new Error('Completa todos los campos');
+    const r = await api(`/repos/${DB.settings.github.user}/${DB.settings.github.repo}`);
+    if(!r.ok) throw new Error('No se pudo acceder al repo ('+r.status+')');
+    return true;
   }
-
   function schedulePush(){
     clearTimeout(pushTimer);
     pushTimer = setTimeout(()=>{
-      emit('info','Auto-sincronización iniciada por cambios locales');
       push().then(()=>UI.toast('Sincronizado con GitHub'))
             .catch(e=>UI.toast('Sync error: '+e.message));
     }, 1500);
   }
-
-  return { push, pull, test, schedulePush, cfgOk, onLog, getLogs, getStatus, clearLogs, effectivePath, sanitizeScope };
+  return { push, pull, test, schedulePush, cfgOk };
 })();
 window.GitSync = GitSync;
 
