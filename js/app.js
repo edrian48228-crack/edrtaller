@@ -133,6 +133,7 @@ const App = (() => {
     else if(v==='repairs') Views.repairsList(arg);
     else if(v==='new') Views.newRepair(extra);
     else if(v==='sales') Views.sales(arg);
+    else if(v==='summary') Views.summary();
     else if(v==='chooser') Views.newChooser();
     else if(v==='search') Views.search();
     else if(v==='admin') Views.admin();

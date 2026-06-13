@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.json" />
   <link rel="icon" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="css/styles.css?v=15" />
+  <link rel="stylesheet" href="css/styles.css?v=16" />
 </head>
 <body>
   <!-- LOGIN -->
@@ -70,6 +70,10 @@
       <button class="tab fab-tab" data-view="chooser">
         <svg viewBox="0 0 24 24" class="ico"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
       </button>
+      <button class="tab" data-view="summary">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M5 9.2h3v9H5v-9zm5.5-5h3v14h-3v-14zM16 13h3v5.2h-3V13z"/></svg>
+        <span>Resumen</span>
+      </button>
       <button class="tab" data-view="sales">
         <svg viewBox="0 0 24 24" class="ico"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7.2 14.6l.9-1.6h7.5a2 2 0 0 0 1.8-1.1l3.2-6.1L18.8 5l-3.2 6H8.5L4.3 2H1v2h2l3.6 7.6-1.4 2.5C4.5 15.4 5.4 17 6.9 17H19v-2H7.4l-.2-.4z"/></svg>
         <span>Comp/Vent</span>
@@ -93,12 +97,12 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="js/db.js?v=15"></script>
-  <script src="js/sync.js?v=15"></script>
-  <script src="js/auth.js?v=15"></script>
-  <script src="js/ui.js?v=15"></script>
-  <script src="js/views.js?v=15"></script>
-  <script src="js/app.js?v=15"></script>
+  <script src="js/db.js?v=16"></script>
+  <script src="js/sync.js?v=16"></script>
+  <script src="js/auth.js?v=16"></script>
+  <script src="js/ui.js?v=16"></script>
+  <script src="js/views.js?v=16"></script>
+  <script src="js/app.js?v=16"></script>
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {

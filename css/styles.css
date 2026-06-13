@@ -1049,3 +1049,43 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
   position:relative; left:auto; bottom:auto;
   width:30px; height:30px;
 }
+
+/* v16 — Resumen / Compra-Venta y foto del cliente reorganizada */
+.earn-tile{ display:flex; flex-direction:column; gap:2px }
+.earn-tile .er{
+  display:block; font-size:10.5px; color:var(--muted);
+  margin-top:2px; line-height:1.25; font-weight:500
+}
+.cv-range{
+  margin:0 0 8px; font-size:10.5px; color:var(--muted);
+  letter-spacing:.2px; font-weight:500
+}
+.cv-legend{
+  margin-top:14px; padding:12px 14px;
+  background:var(--surface-2); border:1px solid var(--border);
+  border-radius:12px; font-size:12.5px; color:var(--muted); line-height:1.5
+}
+.cv-legend b{ color:#fff }
+.cv-legend ul{ margin:6px 0 0; padding-left:18px }
+.cv-legend li{ margin:2px 0 }
+
+/* Foto del cliente: preview + botones debajo (mismo estilo que el equipo) */
+.client-photo-wrap{ margin-bottom:10px }
+.client-photo-preview{
+  width:100%; max-width:180px; aspect-ratio:1;
+  border-radius:14px; border:1.5px dashed var(--border);
+  background:var(--surface-2);
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:6px; color:var(--muted); position:relative; overflow:hidden;
+}
+.client-photo-preview.has-img{ border-style:solid; border-color:var(--primary-glow); padding:0 }
+.client-photo-preview img{ width:100%; height:100%; object-fit:cover; cursor:zoom-in }
+.client-photo-preview .ico{ width:38px; height:38px; opacity:.7 }
+.client-photo-preview .photo-remove{
+  position:absolute; top:6px; right:6px;
+}
+
+/* Aviso de stock en piezas */
+.parts-list .part-row.stock-row .pr-cost{
+  background:var(--surface-2); color:#fff; opacity:.85; cursor:not-allowed;
+}

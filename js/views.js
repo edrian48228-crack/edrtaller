@@ -260,20 +260,24 @@ const Views = (() => {
       <form id="repairForm" novalidate>
 
         ${sectionDivider('Cliente')}
-        <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-          <div style="flex:0 0 auto">
-            <div class="photo-grid single compact">
-              <label class="photo-input ${photos.client?'has-img':''}" id="clientPhotoBox"></label>
-            </div>
-            <!-- Grabador justo debajo de la foto del cliente -->
-            <div class="client-audio-inline" id="audioBox"></div>
+        <div class="form-group">
+          <label>Nombre del cliente *</label>
+          <input name="clientName" id="clientNameInput" required autocapitalize="words" value="${escape(r.clientName||'')}">
+        </div>
+        <div class="form-group">
+          <label>Foto del cliente</label>
+          <div id="clientPhotoWrap" class="client-photo-wrap"></div>
+          <div class="photo-add-row" id="clientPhotoAdd">
+            <label class="photo-add-btn cam">
+              ${ICONS.camera}<span>Tomar foto</span>
+              <input type="file" accept="image/*" capture="user" id="clientPhotoCam">
+            </label>
+            <label class="photo-add-btn gal">
+              ${ICONS.upload}<span>Galería</span>
+              <input type="file" accept="image/*" id="clientPhotoInput">
+            </label>
           </div>
-          <div style="flex:1;min-width:200px">
-            <div class="form-group">
-              <label>Nombre del cliente *</label>
-              <input name="clientName" id="clientNameInput" required autocapitalize="words" value="${escape(r.clientName||'')}">
-            </div>
-          </div>
+          <div class="client-audio-inline" id="audioBox" style="margin-top:14px"></div>
         </div>
 
         <div class="form-group na-group ${naFields.includes('clientPhones')?'is-na':''}" data-na-group="clientPhones">
@@ -346,9 +350,10 @@ const Views = (() => {
         ${naWrap('notes','Notas',`<textarea name="notes">${escape(r.notes||'')}</textarea>`,naFields)}
 
         ${sectionDivider('Piezas usadas')}
-        <p class="muted small" style="margin:-4px 2px 10px">Añade las piezas que cambiaste (puerto, mica, botón, batería, micrófono, etc.) con su <b>costo</b>. Si fue una reparación sin cambio de pieza, deja la lista vacía.</p>
+        <p class="muted small" style="margin:-4px 2px 10px">Selecciona la pieza que cambiaste (puerto, mica, batería, etc.). Solo aparecen las piezas que has <b>comprado</b> en <b>Compra/Venta</b>. El costo unitario se toma automáticamente de tus compras. Si no cambiaste ninguna pieza, deja la lista vacía.</p>
         <div id="partsList" class="parts-list"></div>
         <button type="button" class="btn-secondary btn-inline" id="addPartBtn">${ICONS.plus} Añadir pieza</button>
+        <div id="partsNoStock" class="muted small" style="margin-top:8px"></div>
         <div id="partsSummary" class="parts-summary hidden"></div>
 
 
@@ -456,39 +461,37 @@ const Views = (() => {
     const _devCam = document.getElementById('addDevicePhotoCam');
     if(_devCam) _devCam.addEventListener('change', handleDevicePhotoInput);
 
-    // Foto cliente
+    // Foto cliente — estructura coherente con la foto del equipo
+    async function onPickClient(e){
+      const f = e.target.files[0]; if(!f) return;
+      try{ photos.client = await UI.resizeImage(f); renderClient(); }catch(err){ UI.toast('Error con imagen'); }
+      e.target.value = '';
+    }
     function renderClient(){
-      const box = document.getElementById('clientPhotoBox');
-      box.classList.toggle('has-img', !!photos.client);
+      const wrap = document.getElementById('clientPhotoWrap');
+      if(!wrap) return;
       if(photos.client){
-        box.innerHTML = `
-          <img src="${photos.client}" id="clientPhotoImg">
-          <div class="client-photo-actions">
-            <label class="cp-mini" title="Reemplazar con cámara">${ICONS.camera}<input type="file" accept="image/*" capture="user" id="clientPhotoCam"></label>
-            <label class="cp-mini" title="Reemplazar desde galería">${ICONS.upload}<input type="file" accept="image/*" id="clientPhotoInput"></label>
-          </div>
-          <button type="button" class="photo-remove" id="clientPhotoRm">${ICONS.trash}</button>`;
+        wrap.innerHTML = `
+          <div class="client-photo-preview has-img">
+            <img src="${photos.client}" id="clientPhotoImg" alt="Foto del cliente">
+            <button type="button" class="photo-remove" id="clientPhotoRm" title="Quitar foto">${ICONS.trash}</button>
+          </div>`;
+        const rm = document.getElementById('clientPhotoRm');
+        if(rm) rm.onclick = e=>{ e.preventDefault(); e.stopPropagation(); photos.client = null; renderClient(); };
+        const img = document.getElementById('clientPhotoImg');
+        if(img) img.onclick = ()=> UI.openImageViewer(photos.client);
       } else {
-        box.innerHTML = `
-          ${ICONS.person}
-          <span>Foto cliente</span>
-          <div class="client-photo-actions empty">
-            <label class="cp-btn cam">${ICONS.camera}<span>Cámara</span><input type="file" accept="image/*" capture="user" id="clientPhotoCam"></label>
-            <label class="cp-btn gal">${ICONS.upload}<span>Galería</span><input type="file" accept="image/*" id="clientPhotoInput"></label>
+        wrap.innerHTML = `
+          <div class="client-photo-preview empty">
+            ${ICONS.person}
+            <span class="muted small">Aún no hay foto del cliente</span>
           </div>`;
       }
-      async function onPick(e){
-        const f = e.target.files[0]; if(!f) return;
-        try{ photos.client = await UI.resizeImage(f); renderClient(); }catch(err){ UI.toast('Error con imagen'); }
-      }
+      // Re-enganchar inputs por si el DOM se reemplazó
       const inp = document.getElementById('clientPhotoInput');
-      if(inp) inp.onchange = onPick;
+      if(inp) inp.onchange = onPickClient;
       const cam = document.getElementById('clientPhotoCam');
-      if(cam) cam.onchange = onPick;
-      const rm = document.getElementById('clientPhotoRm');
-      if(rm) rm.onclick = e=>{ e.preventDefault(); e.stopPropagation(); photos.client = null; renderClient(); };
-      const img = document.getElementById('clientPhotoImg');
-      if(img) img.onclick = e=>{ e.stopPropagation(); UI.openImageViewer(photos.client); };
+      if(cam) cam.onchange = onPickClient;
     }
     renderClient();
 
@@ -541,43 +544,121 @@ const Views = (() => {
     }
     renderAudio();
 
-    // === PIEZAS ===
-    const partOptionsHtml = (DB.settings.productTypes||[])
-      .map(p=>`<option value="${escape(p)}">`).join('');
+    // === PIEZAS (lista de compras, costo fijado por Compra/Venta) ===
+    function computePurchasedCatalog(){
+      // Recorre transacciones de compra para calcular costo promedio y unidades disponibles
+      const map = {};
+      for(const t of DB.transactions){
+        if(t.type!=='purchase') continue;
+        const n = String(t.product||'').trim(); if(!n) continue;
+        const q = Number(t.quantity||0);
+        const tot = Number(t.total||0);
+        if(!map[n]) map[n] = { name:n, qty:0, invested:0 };
+        map[n].qty += q; map[n].invested += tot;
+      }
+      // Resta unidades ya vendidas o usadas en otras reparaciones
+      const stats = DB.productStats();
+      for(const n in map){
+        const s = stats[n];
+        const used = s ? (s.sold + s.usedInRepairs) : 0;
+        map[n].available = Math.max(0, map[n].qty - used);
+        map[n].avgCost = map[n].qty>0 ? (map[n].invested/map[n].qty) : 0;
+      }
+      return map;
+    }
+
+    function partUsedInCurrent(name, idxExcept){
+      // Suma cantidades ya añadidas en esta misma reparación (para no contar 2 veces)
+      let s = 0;
+      parts.forEach((p,i)=>{
+        if(i===idxExcept) return;
+        if((p.name||'').toLowerCase()===String(name||'').toLowerCase()) s += Number(p.qty||0);
+      });
+      return s;
+    }
+
     function renderParts(){
       const wrap = document.getElementById('partsList');
       const sum = document.getElementById('partsSummary');
+      const noStock = document.getElementById('partsNoStock');
       if(!wrap) return;
+      const catalog = computePurchasedCatalog();
+      const catalogNames = Object.keys(catalog).sort((a,b)=>a.localeCompare(b,'es'));
+
+      if(!catalogNames.length && !parts.length){
+        wrap.innerHTML = '<p class="muted small parts-empty">No tienes piezas compradas todavía. Ve a <b>Compra/Venta</b> y registra una compra antes de añadirlas aquí.</p>';
+        sum.classList.add('hidden');
+        if(noStock) noStock.textContent = '';
+        return;
+      }
       if(!parts.length){
         wrap.innerHTML = '<p class="muted small parts-empty">Reparación sin cambio de pieza.</p>';
         sum.classList.add('hidden');
+        if(noStock) noStock.textContent = '';
         return;
       }
-      // datalist único reutilizable
-      wrap.innerHTML = parts.map((p,i)=>`
-        <div class="part-row" data-pi="${i}">
+
+      wrap.innerHTML = parts.map((p,i)=>{
+        // Opciones: catálogo + el nombre actual si no está en catálogo (compatibilidad)
+        const currentName = p.name||'';
+        const names = catalogNames.slice();
+        if(currentName && !names.some(n=>n.toLowerCase()===currentName.toLowerCase())) names.unshift(currentName);
+        const opts = ['<option value="">— Selecciona pieza —</option>']
+          .concat(names.map(n=>{
+            const info = catalog[n];
+            const avail = info ? Math.max(0, info.available - partUsedInCurrent(n,i)) : 0;
+            const cost = info ? info.avgCost : Number(p.unitCost||0);
+            const tag = info ? `  (stock ${avail} · $ ${cost.toFixed(2)})` : '  (no comprada)';
+            const sel = currentName.toLowerCase()===n.toLowerCase() ? ' selected' : '';
+            return `<option value="${escape(n)}"${sel}>${escape(n)}${escape(tag)}</option>`;
+          })).join('');
+        const info = catalog[currentName];
+        const cost = info ? info.avgCost : Number(p.unitCost||0);
+        const avail = info ? Math.max(0, info.available - partUsedInCurrent(currentName,i)) : 0;
+        const overWarn = (info && Number(p.qty||0) > avail + Number(p.qty||0)) ? '' : ''; // handled below
+        return `
+        <div class="part-row stock-row" data-pi="${i}">
           <div class="pr-main">
-            <input class="pr-name" list="partsTypesList" placeholder="Pieza (puerto, mica, batería...)" value="${escape(p.name||'')}" data-pf="name" data-pi="${i}">
+            <div class="select-elegant">
+              <select class="pr-name" data-pf="name" data-pi="${i}">${opts}</select>
+            </div>
             <div class="pr-nums">
               <input class="pr-qty" type="number" min="1" step="1" inputmode="numeric" placeholder="Cant." value="${p.qty||1}" data-pf="qty" data-pi="${i}">
-              <input class="pr-cost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Costo unit." value="${p.unitCost!==''?p.unitCost:''}" data-pf="unitCost" data-pi="${i}">
+              <input class="pr-cost" type="number" step="0.01" value="${cost.toFixed(2)}" data-pf="unitCost" data-pi="${i}" readonly title="Costo unitario tomado de tus compras">
             </div>
+            ${currentName && info ? `<p class="muted xsmall" style="margin:4px 2px 0">Disponible tras esta reparación: <b>${Math.max(0, avail - Number(p.qty||0))}</b> · costo unit. $ ${cost.toFixed(2)}</p>` : (currentName ? '<p class="muted xsmall" style="margin:4px 2px 0;color:#ff9b8b">⚠️ Esta pieza no figura en tus compras. Regístrala en Compra/Venta.</p>' : '')}
           </div>
           <button type="button" class="icon-btn-sm pr-rm" data-rm-part="${i}" aria-label="Quitar pieza">${ICONS.trash}</button>
-        </div>
-      `).join('') + `<datalist id="partsTypesList">${partOptionsHtml}</datalist>`;
-      wrap.querySelectorAll('input[data-pi]').forEach(inp=>{
+        </div>`;
+      }).join('');
+
+      wrap.querySelectorAll('select[data-pi], input[data-pi]').forEach(inp=>{
         inp.addEventListener('input', e=>{
           const i = +inp.dataset.pi; const f = inp.dataset.pf;
           if(f==='qty') parts[i].qty = parseInt(inp.value,10)||0;
           else if(f==='unitCost') parts[i].unitCost = inp.value;
-          else parts[i].name = inp.value;
+          else {
+            parts[i].name = inp.value;
+            // refrescar costo desde catálogo
+            const info = catalog[parts[i].name];
+            parts[i].unitCost = info ? Number(info.avgCost.toFixed(2)) : '';
+            renderParts(); return;
+          }
           updatePartsSummary();
         });
       });
       wrap.querySelectorAll('[data-rm-part]').forEach(b=>{
         b.onclick = ()=>{ parts.splice(+b.dataset.rmPart,1); renderParts(); };
       });
+      // Aviso global si alguna pieza supera el stock
+      const issues = [];
+      parts.forEach((p,i)=>{
+        if(!p.name) return;
+        const info = catalog[p.name]; if(!info) return;
+        const avail = info.available - partUsedInCurrent(p.name,i);
+        if(Number(p.qty||0) > avail) issues.push(`${p.name}: pides ${p.qty}, disponibles ${Math.max(0,avail)}`);
+      });
+      if(noStock) noStock.innerHTML = issues.length ? `<span style="color:#ff9b8b">⚠️ Stock insuficiente — ${issues.map(escape).join(' · ')}</span>` : '';
       updatePartsSummary();
     }
     function updatePartsSummary(){
@@ -587,10 +668,15 @@ const Views = (() => {
       if(!valid.length){ sum.classList.add('hidden'); return; }
       const inv = valid.reduce((a,p)=> a + (Number(p.unitCost||0)*Number(p.qty||0)), 0);
       sum.classList.remove('hidden');
-      sum.innerHTML = `<span>Piezas: <b>${valid.length}</b></span><span>Inversión en piezas: <b>$ ${inv.toFixed(2)}</b></span>`;
+      sum.innerHTML = `<span>Piezas: <b>${valid.length}</b></span><span>Costo en piezas: <b>$ ${inv.toFixed(2)}</b></span>`;
     }
     document.getElementById('addPartBtn').onclick = ()=>{
-      parts.push({ name:'', qty:1, unitCost:'' });
+      // Pre-rellenar con la primera pieza disponible si existe
+      const cat = computePurchasedCatalog();
+      const names = Object.keys(cat).filter(n=> (cat[n].available - partUsedInCurrent(n,-1)) > 0).sort((a,b)=>a.localeCompare(b,'es'));
+      const first = names[0];
+      const cost = first ? Number(cat[first].avgCost.toFixed(2)) : '';
+      parts.push({ name: first||'', qty:1, unitCost: cost });
       renderParts();
     };
     renderParts();
@@ -1147,8 +1233,11 @@ const Views = (() => {
 
       <div class="admin-card" id="adm-stats">
         <h3>Estadísticas</h3>
-        <p>Las estadísticas de <b>ganancia</b>, <b>inversión</b>, <b>compras</b> y <b>ventas</b> se muestran ahora en la sección <b>Comp/Vent</b>, desplegables para acceder con un toque.</p>
-        <button class="btn-secondary" id="goStatsBtn">Ir a estadísticas</button>
+        <p>Las estadísticas de <b>ganancia</b>, <b>ingresos</b>, <b>servicios</b> y <b>costos</b> se muestran ahora en la sección <b>Resumen</b>. La gestión de compras, ventas, stock y alertas vive en <b>Compra/Venta</b>.</p>
+        <div class="btn-row">
+          <button class="btn-secondary" id="goSummaryBtn">Ir a Resumen</button>
+          <button class="btn-secondary" id="goStatsBtn">Ir a Compra/Venta</button>
+        </div>
       </div>
     `;
 
@@ -1206,6 +1295,8 @@ const Views = (() => {
 
     const gs = document.getElementById('goStatsBtn');
     if(gs) gs.onclick = ()=> App.go('sales');
+    const gsm = document.getElementById('goSummaryBtn');
+    if(gsm) gsm.onclick = ()=> App.go('summary');
 
 
 
@@ -1471,49 +1562,90 @@ const Views = (() => {
 
   function fmtMoney(v){ return '$ '+Number(v||0).toFixed(2); }
 
+  // Etiquetas con descripción humana del rango temporal
+  function periodInfo(){
+    const now = new Date();
+    const t0 = new Date(now); t0.setHours(0,0,0,0);
+    const wd = (t0.getDay()+6)%7;
+    const w0 = new Date(t0); w0.setDate(w0.getDate()-wd);
+    const m0 = new Date(t0.getFullYear(), t0.getMonth(), 1);
+    const y0 = new Date(t0.getFullYear(), 0, 1);
+    const fd = d => d.toLocaleDateString('es-ES',{day:'2-digit',month:'short'});
+    return {
+      day:   `Solo el día de hoy (${fd(t0)})`,
+      week:  `Desde el lunes ${fd(w0)} hasta hoy`,
+      month: `Desde el día 1 (${fd(m0)}) hasta hoy`,
+      year:  `Desde el 1 de enero (${fd(y0)}) hasta hoy`,
+      total: 'Suma de todo lo registrado, sin límite de fecha'
+    };
+  }
+
   function sysStatsTilesHtml(){
     const s = computeRepairStats();
+    const p = periodInfo();
     return `
+      <p class="muted small" style="margin:0 0 10px">
+        Dinero que has <b>cobrado</b> por reparaciones <b>entregadas</b>.
+        Solo cuenta cuando marcas el equipo como <b>Entregado</b>.
+      </p>
       <div class="earn-grid">
-        <div class="earn-tile"><span class="el">Hoy</span><span class="ev">${fmtMoney(s.dT)}</span></div>
-        <div class="earn-tile"><span class="el">Esta semana</span><span class="ev">${fmtMoney(s.wT)}</span></div>
-        <div class="earn-tile"><span class="el">Este mes</span><span class="ev">${fmtMoney(s.mT)}</span></div>
-        <div class="earn-tile"><span class="el">Este año</span><span class="ev">${fmtMoney(s.yT)}</span></div>
-        <div class="earn-tile gold"><span class="el">Total entregadas</span><span class="ev">${fmtMoney(s.total)}</span></div>
-        <div class="earn-tile pending"><span class="el">Por cobrar</span><span class="ev">${fmtMoney(s.pending)}</span></div>
+        <div class="earn-tile" title="${escape(p.day)}"><span class="el">Hoy</span><span class="ev">${fmtMoney(s.dT)}</span><span class="er">${escape(p.day)}</span></div>
+        <div class="earn-tile" title="${escape(p.week)}"><span class="el">Esta semana</span><span class="ev">${fmtMoney(s.wT)}</span><span class="er">${escape(p.week)}</span></div>
+        <div class="earn-tile" title="${escape(p.month)}"><span class="el">Este mes</span><span class="ev">${fmtMoney(s.mT)}</span><span class="er">${escape(p.month)}</span></div>
+        <div class="earn-tile" title="${escape(p.year)}"><span class="el">Este año</span><span class="ev">${fmtMoney(s.yT)}</span><span class="er">${escape(p.year)}</span></div>
+        <div class="earn-tile gold" title="${escape(p.total)}"><span class="el">Total cobrado</span><span class="ev">${fmtMoney(s.total)}</span><span class="er">${escape(p.total)}</span></div>
+        <div class="earn-tile pending" title="Reparaciones aún no entregadas con precio definido"><span class="el">Pendiente de cobrar</span><span class="ev">${fmtMoney(s.pending)}</span><span class="er">Reparaciones aún sin entregar</span></div>
       </div>
-      <p class="muted small" style="margin-top:12px">Reparaciones entregadas: <b>${s.countDel}</b> · Total registradas: <b>${DB.repairs.length}</b> · Datos v${DB.all.schemaVersion}</p>`;
+      <p class="muted small" style="margin-top:12px">Reparaciones entregadas: <b>${s.countDel}</b> · Total registradas: <b>${DB.repairs.length}</b></p>`;
   }
 
   function cvStatsTilesHtml(){
     const stats = computeAllStats();
-    function tile(label, b, accent){
+    const p = periodInfo();
+    function tile(label, b, rangeHelp, accent){
       const pcls = b.totalProfit>=0 ? 'pos' : 'neg';
+      const movs = b.countSales+b.countPurchases+b.countRepairs;
       return `<div class="cv-tile ${accent||''}">
         <div class="cv-tile-head">
           <span class="cv-tile-label">${escape(label)}</span>
-          <span class="cv-tile-profit ${pcls}">${fmtMoney(b.totalProfit)}</span>
+          <span class="cv-tile-profit ${pcls}" title="Ganancia neta: lo que entró menos lo que costó">${fmtMoney(b.totalProfit)}</span>
         </div>
+        <p class="cv-range">${escape(rangeHelp)}</p>
         <div class="cv-tile-grid">
-          <div class="cv-mini sale"><span>Ventas</span><b>${fmtMoney(b.salesIncome)}</b></div>
-          <div class="cv-mini repair"><span>Servicios</span><b>${fmtMoney(b.repairIncome)}</b></div>
-          <div class="cv-mini cost"><span>Costo merc.</span><b>${fmtMoney(b.salesCost)}</b></div>
-          <div class="cv-mini cost"><span>Piezas</span><b>${fmtMoney(b.repairPartsCost)}</b></div>
-          <div class="cv-mini buy"><span>Inversión</span><b>${fmtMoney(b.purchases)}</b></div>
-          <div class="cv-mini count"><span>Movs.</span><b>${b.countSales+b.countPurchases+b.countRepairs}</b></div>
+          <div class="cv-mini sale" title="Dinero recibido por ventas de productos"><span>Ventas (entró)</span><b>${fmtMoney(b.salesIncome)}</b></div>
+          <div class="cv-mini repair" title="Dinero cobrado por reparaciones entregadas"><span>Servicios (entró)</span><b>${fmtMoney(b.repairIncome)}</b></div>
+          <div class="cv-mini cost" title="Cuánto te costó a ti la mercancía que vendiste"><span>Costo mercancía</span><b>${fmtMoney(b.salesCost)}</b></div>
+          <div class="cv-mini cost" title="Cuánto costaron las piezas usadas en reparaciones"><span>Piezas usadas</span><b>${fmtMoney(b.repairPartsCost)}</b></div>
+          <div class="cv-mini buy" title="Dinero gastado en compras de stock"><span>Compras stock</span><b>${fmtMoney(b.purchases)}</b></div>
+          <div class="cv-mini count" title="Número de operaciones registradas en el periodo"><span>Movimientos</span><b>${movs}</b></div>
         </div>
       </div>`;
     }
     return `
+      <p class="muted small" style="margin:0 0 10px">
+        Resumen del dinero que entró, lo que te costó y la <b>ganancia neta</b> en cada periodo.
+        Cada bloque te dice exactamente desde qué fecha cuenta.
+      </p>
       <div class="cv-grid">
-        ${tile('Hoy', stats.day)}
-        ${tile('Esta semana', stats.week)}
-        ${tile('Este mes', stats.month)}
-        ${tile('Este año', stats.year)}
-        ${tile('Total histórico', stats.total, 'gold')}
+        ${tile('Hoy', stats.day, p.day)}
+        ${tile('Esta semana', stats.week, p.week)}
+        ${tile('Este mes', stats.month, p.month)}
+        ${tile('Este año', stats.year, p.year)}
+        ${tile('Total histórico', stats.total, p.total, 'gold')}
       </div>
-      <p class="muted xsmall" style="margin-top:10px"><b>Ganancia</b> = (Ventas − Costo merc.) + (Servicios − Piezas). <b>Inversión</b> es lo gastado en compras de stock.</p>`;
+      <div class="cv-legend">
+        <b>¿Cómo se calcula?</b>
+        <ul>
+          <li><b>Ganancia</b> = (Ventas − Costo mercancía) + (Servicios − Piezas usadas).</li>
+          <li><b>Ventas</b>: total facturado por los productos que vendiste.</li>
+          <li><b>Servicios</b>: precio de las reparaciones <i>entregadas</i> al cliente.</li>
+          <li><b>Costo mercancía</b> y <b>Piezas usadas</b>: lo que tú pagaste por esos artículos.</li>
+          <li><b>Compras stock</b>: inversión total en comprar piezas (no resta de la ganancia hasta que las vendas o las uses).</li>
+          <li><b>Movimientos</b>: cantidad de ventas, compras y reparaciones entregadas en ese periodo.</li>
+        </ul>
+      </div>`;
   }
+
 
   function stockPanelHtml(){
     const stats = DB.productStats();
@@ -1559,6 +1691,40 @@ const Views = (() => {
     });
   }
 
+  function summary(){
+    view().innerHTML = `
+      <div class="greeting">Resumen <span>financiero</span></div>
+      <p class="muted small" style="margin:-8px 4px 14px">Ganancias, ingresos y reparaciones — todo con explicación de dónde sale cada cifra.</p>
+
+      <div class="acc-card cv-stats-card open">
+        <button class="acc-head" data-acc type="button">
+          <span class="acc-ico">${ICONS.box}</span>
+          <span class="acc-title">Contabilidad e ingresos</span>
+          <span class="acc-sub">Lo que entró, lo que costó y la ganancia neta</span>
+          <span class="acc-chev"></span>
+        </button>
+        <div class="acc-body">${cvStatsTilesHtml()}</div>
+      </div>
+
+      <div class="acc-card open">
+        <button class="acc-head" data-acc type="button">
+          <span class="acc-ico">${ICONS.edit}</span>
+          <span class="acc-title">Reparaciones cobradas</span>
+          <span class="acc-sub">Solo cuenta cuando entregas el equipo</span>
+          <span class="acc-chev"></span>
+        </button>
+        <div class="acc-body">${sysStatsTilesHtml()}</div>
+      </div>
+
+      <div class="btn-row" style="margin-top:14px">
+        <button class="btn-secondary" id="goCvBtn">${ICONS.box} Ir a Compra/Venta</button>
+      </div>
+    `;
+    bindAccordions();
+    const gb = document.getElementById('goCvBtn');
+    if(gb) gb.onclick = ()=> App.go('sales');
+  }
+
   function sales(filter){
     const active = filter || 'all';
     let list = DB.transactions.slice();
@@ -1576,35 +1742,21 @@ const Views = (() => {
     const stockStats = DB.productStats();
     const lowList = Object.values(stockStats).filter(i=> i.min>0 && i.stock<=i.min);
     const lowBadge = lowList.length ? `<span class="acc-badge alert">${lowList.length}</span>` : '';
+    const items = Object.values(stockStats);
+    const totalStockUnits = items.reduce((a,i)=> a + Math.max(0,i.stock), 0);
 
     view().innerHTML = `
       <div class="greeting">Compras y <span>Ventas</span></div>
-
-      <div class="acc-card cv-stats-card open">
-        <button class="acc-head" data-acc type="button">
-          <span class="acc-ico">${ICONS.box}</span>
-          <span class="acc-title">Contabilidad e ingresos</span>
-          <span class="acc-sub">Ganancia · ventas · servicios · inversión</span>
-          <span class="acc-chev"></span>
-        </button>
-        <div class="acc-body">${cvStatsTilesHtml()}</div>
-      </div>
-
-      <div class="acc-card">
-        <button class="acc-head" data-acc type="button">
-          <span class="acc-ico">${ICONS.edit}</span>
-          <span class="acc-title">Reparaciones · resumen</span>
-          <span class="acc-sub">Entregas, por cobrar e ingresos</span>
-          <span class="acc-chev"></span>
-        </button>
-        <div class="acc-body">${sysStatsTilesHtml()}</div>
-      </div>
+      <p class="muted small" style="margin:-8px 4px 14px">
+        Gestiona aquí tus compras de stock y tus ventas. Cada compra suma piezas a tu inventario;
+        cada venta o pieza usada en una reparación las descuenta automáticamente.
+      </p>
 
       <div class="acc-card ${lowList.length?'open':''}">
         <button class="acc-head" data-acc type="button">
           <span class="acc-ico">${ICONS.box}</span>
           <span class="acc-title">Stock y alertas ${lowBadge}</span>
-          <span class="acc-sub">Cuánto te queda · cuándo reponer</span>
+          <span class="acc-sub">${totalStockUnits} unidad(es) en total · define mínimos para avisos</span>
           <span class="acc-chev"></span>
         </button>
         <div class="acc-body">${stockPanelHtml()}</div>
@@ -1626,6 +1778,7 @@ const Views = (() => {
     bindStockInputs();
     bindTxCards();
   }
+
 
 
 
@@ -1863,5 +2016,5 @@ const Views = (() => {
     });
   }
 
-  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, newTransaction, newChooser };
+  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, summary, newTransaction, newChooser };
 })();
