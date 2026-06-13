@@ -33,7 +33,7 @@ const DB = (() => {
       creator: { phone: '', whatsapp: '' },
       github: {
         enabled: false, user: '', repo: '', branch: 'main',
-        path: 'taller-data.json', token: '',
+        path: 'taller-data.json', token: '', scope: '',
         autoSync: true, lastSyncAt: null, lastSha: null
       }
     },
