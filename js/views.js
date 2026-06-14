@@ -1709,12 +1709,13 @@ const Views = (() => {
     if(isSale && t.costTotal != null){
       const profit = total - Number(t.costTotal||0);
       const pcls = profit>=0 ? 'pos' : 'neg';
-      profitHtml = `<span class="tx-profit ${pcls}">Ganancia de esta venta: $ ${profit.toFixed(2)}</span>`;
-    } else if(isSale){
-      profitHtml = `<span class="tx-profit muted">Ganancia de esta venta: sin costo registrado</span>`;
-    } else {
-      profitHtml = `<span class="tx-profit neg">Inversión de esta compra: $ ${total.toFixed(2)}</span>`;
+      profitHtml = `<span class="tx-profit ${pcls}">Ganancia $ ${profit.toFixed(2)}</span>`;
+    } else if(!isSale){
+      profitHtml = `<span class="tx-profit neg">Inversión $ ${total.toFixed(2)}</span>`;
     }
+    const gT = totalProfitNow();
+    const gCls = gT>=0 ? 'pos' : 'neg';
+    const generalHtml = `<span class="tx-profit ${gCls}" title="Ganancia total acumulada del negocio">G. general $ ${gT.toFixed(2)}</span>`;
     return `
       <div class="tx-card ${cls}" data-tx-id="${escape(t.id)}">
         <div class="tx-info">
@@ -1724,8 +1725,8 @@ const Views = (() => {
           </div>
           <h3>${escape(t.product||'Producto')}</h3>
           <p class="muted small">${qty} × $ ${unit.toFixed(2)}${cp}</p>
-          <p class="muted small">${fmtDate(t.date||t.createdAt)}</p>
-          <p class="small" style="margin-top:2px">${profitHtml}</p>
+          <p class="muted small">${fmtDate(t.date||t.createdAt)} ${profitHtml}</p>
+          <p class="muted xsmall" style="margin-top:2px">${generalHtml}</p>
         </div>
         <div class="tx-amount ${cls}">${sign} $ ${total.toFixed(2)}</div>
       </div>`;
