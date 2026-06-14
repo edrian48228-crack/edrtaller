@@ -201,6 +201,17 @@ const Views = (() => {
     const recent = applySort(repairs, sortKey).slice(0,5);
 
     view().innerHTML = `
+      <div class="totals-banner">
+        <div class="tb-l">
+          <span class="tb-lbl">Total de reparaciones</span>
+          <span class="tb-num">${repairs.length}</span>
+        </div>
+        <div class="tb-r">
+          <span class="tb-pill">Activas<b>${pending+inProgress+completed}</b></span>
+          <span class="tb-pill">Entregadas<b>${delivered}</b></span>
+          <span class="tb-pill">Canceladas<b>${cancelled}</b></span>
+        </div>
+      </div>
       <div class="greeting">Bienvenido a <span>${escape(DB.settings.appName)}</span></div>
       ${todayPending>0 ? `
         <div class="admin-card" style="border-left:3px solid #ff7b6b;background:linear-gradient(90deg,rgba(255,123,107,.1),var(--surface))">
@@ -247,7 +258,19 @@ const Views = (() => {
 
     const opts = FILTERS.map(f=>`<option value="${f.k}" ${f.k===active?'selected':''}>${f.label}</option>`).join('');
 
+    const totalAll = DB.repairs.length;
+    const filteredCount = list.length;
     view().innerHTML = `
+      <div class="totals-banner">
+        <div class="tb-l">
+          <span class="tb-lbl">Total reparaciones</span>
+          <span class="tb-num">${totalAll}</span>
+        </div>
+        <div class="tb-r">
+          <span class="tb-pill">Mostrando<b>${filteredCount}</b></span>
+          <span class="tb-pill">Filtro<b>${escape((FILTERS.find(f=>f.k===active)||{}).label||'Todas')}</b></span>
+        </div>
+      </div>
       <div class="filter-bar">
         <div class="select-elegant">
           <select id="repairsFilter" aria-label="Filtrar reparaciones">${opts}</select>
@@ -289,6 +312,70 @@ const Views = (() => {
       ? r.clientPhones.slice()
       : (r.clientPhone ? [r.clientPhone] : ['']);
     if(!phones.length) phones.push('');
+
+    // ===== Borrador automático (evita perder datos si pulsas Atrás) =====
+    const DRAFT_KEY = 'taller_draft_newrepair';
+    let draftDirty = false;
+    if(!existing){
+      try{
+        const raw = localStorage.getItem(DRAFT_KEY);
+        if(raw){
+          const d = JSON.parse(raw);
+          if(d && typeof d === 'object'){
+            ['clientName','clientAddress','clientIdNumber','device','brand','model','serial','issue','notes','price','deposit','warrantyDays'].forEach(k=>{
+              if(d[k]!=null && r[k]==null) r[k] = d[k];
+            });
+            if(Array.isArray(d.phones) && d.phones.length){ phones.length=0; d.phones.forEach(x=>phones.push(x)); }
+            if(Array.isArray(d.parts)) parts.push(...d.parts.map(p=>({name:p.name||'',qty:p.qty||1,unitCost:p.unitCost!=null?p.unitCost:''})));
+            if(Array.isArray(d.naFields)) d.naFields.forEach(k=>{ if(!naFields.includes(k)) naFields.push(k); });
+            UI.toast('Borrador recuperado');
+          }
+        }
+      }catch(_){}
+    }
+    function saveDraft(){
+      if(existing) return;
+      try{
+        const form = document.getElementById('repairForm'); if(!form) return;
+        const fd = new FormData(form);
+        const d = {};
+        ['clientName','clientAddress','clientIdNumber','device','brand','model','serial','issue','notes','price','deposit','warrantyDays'].forEach(k=>{
+          const v = fd.get(k); if(v!=null && String(v).trim()!=='') d[k] = String(v);
+        });
+        d.phones = phones.slice();
+        d.parts = parts.slice();
+        d.naFields = naFields.slice();
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+        draftDirty = true;
+      }catch(_){}
+    }
+    function clearDraft(){
+      try{ localStorage.removeItem(DRAFT_KEY); }catch(_){}
+      draftDirty = false;
+      window.removeEventListener('beforeunload', beforeUnload);
+    }
+    function beforeUnload(e){
+      if(!draftDirty) return;
+      e.preventDefault(); e.returnValue = ''; return '';
+    }
+    window.addEventListener('beforeunload', beforeUnload);
+    // pushState para capturar el botón Atrás del navegador/Android
+    try{ history.pushState({repairForm:true}, ''); }catch(_){}
+    const popHandler = async (ev)=>{
+      if(!draftDirty){ window.removeEventListener('popstate', popHandler); return; }
+      // Bloquea la salida hasta confirmar
+      try{ history.pushState({repairForm:true}, ''); }catch(_){}
+      const ok = await UI.confirmDialog({
+        title:'Salir sin guardar',
+        message:'Tienes datos sin guardar en este formulario. ¿Salir igualmente? El borrador se conservará para más tarde.',
+        okText:'Salir', cancelText:'Seguir editando', danger:true
+      });
+      if(ok){
+        window.removeEventListener('popstate', popHandler);
+        App.go(existing ? 'repairs' : 'dashboard');
+      }
+    };
+    window.addEventListener('popstate', popHandler);
 
     const deviceOptions = DB.settings.deviceTypes.map(d=>`<option value="${escape(d)}">`).join('');
 
@@ -410,6 +497,8 @@ const Views = (() => {
     // Cerrar (arriba)
     document.getElementById('formCloseTop').onclick = ()=>{
       try{ if(rec) rec.cancel(); }catch(e){}
+      window.removeEventListener('popstate', popHandler);
+      window.removeEventListener('beforeunload', beforeUnload);
       App.go(existing ? 'repairs' : 'dashboard');
     };
     // Cancelar reparación (abajo)
@@ -418,11 +507,14 @@ const Views = (() => {
         title: existing ? 'Cancelar reparación' : 'Cancelar y salir',
         message: existing
           ? '¿Cancelar esta reparación? Se marcará como cancelada.'
-          : '¿Cancelar y salir? Se perderán los datos no guardados.',
+          : '¿Cancelar y salir? El borrador se borrará y perderás los datos no guardados.',
         okText:'Sí, cancelar', cancelText:'Volver', danger:true
       });
       if(!ok) return;
       try{ if(rec) rec.cancel(); }catch(e){}
+      if(!existing) clearDraft();
+      window.removeEventListener('popstate', popHandler);
+      window.removeEventListener('beforeunload', beforeUnload);
       if(existing){
         DB.updateRepair(existing.id, { status: 'cancelled' });
         UI.toast('Reparación cancelada');
@@ -431,6 +523,15 @@ const Views = (() => {
         App.go('dashboard');
       }
     };
+
+    // Auto-borrador: cualquier cambio en el formulario lo guarda
+    if(!existing){
+      const formEl = document.getElementById('repairForm');
+      if(formEl){
+        formEl.addEventListener('input', saveDraft);
+        formEl.addEventListener('change', saveDraft);
+      }
+    }
 
     UI.attachAutoCapitalize(document.getElementById('clientNameInput'));
 
@@ -729,22 +830,9 @@ const Views = (() => {
       const wEl = document.getElementById('warrantyDaysInput');
       const hint = document.getElementById('warrantyHint');
       if(!dueEl || !wEl || !hint) return;
-      const val = dueEl.value;
-      if(val){
-        const t0 = new Date(); t0.setHours(0,0,0,0);
-        const due = new Date(val+'T12:00:00').getTime();
-        if(due < t0.getTime()){
-          wEl.value = '';
-          wEl.disabled = true;
-          wEl.placeholder = 'Sin garantía';
-          hint.innerHTML = '<b>Sin garantía:</b> la fecha de entrega ya pasó, no se aplica garantía.';
-          hint.style.color = '#ff9b8b';
-          return;
-        }
-      }
       wEl.disabled = false;
       wEl.placeholder = 'Ej: 30';
-      hint.innerHTML = 'La garantía comienza el día que marques el equipo como <b>Entregado</b>.';
+      hint.innerHTML = 'La garantía se contará a partir del día que marques el equipo como <b>Entregado</b>, sin importar si la fecha de entrega ya pasó.';
       hint.style.color = '';
     }
     const dueEl = document.getElementById('dueDateInput');
@@ -810,10 +898,9 @@ const Views = (() => {
         data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
         data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
         const wd = fd.get('warrantyDays');
-        // Si la fecha de entrega ya pasó (anterior a hoy), no aplica garantía
-        const today0 = new Date(); today0.setHours(0,0,0,0);
-        const dueBeforeToday = data.dueDate && data.dueDate < today0.getTime();
-        data.warrantyDays = (!dueBeforeToday && wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
+        // Garantía: se aplica siempre que se indique un número de días.
+        // El contador empieza el día que el equipo se marca como Entregado.
+        data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
         data.devicePhotos = photos.device;
         data.devicePhoto = photos.device[0] || null;
         data.clientPhoto = photos.client;
@@ -839,7 +926,10 @@ const Views = (() => {
         } else {
           const nr = DB.addRepair(data);
           UI.toast('Reparación registrada: '+nr.id);
+          clearDraft();
         }
+        window.removeEventListener('popstate', popHandler);
+        window.removeEventListener('beforeunload', beforeUnload);
         App.go('repairs');
       };
       if(rec && rec.isRecording()){
@@ -902,14 +992,15 @@ const Views = (() => {
       ${(()=>{ 
         if(!r.warrantyDays) return '<div class="detail-row"><span class="lbl">Garantía</span><span class="val"><span class="muted">—</span></span></div>';
         if(r.status !== 'delivered' || !r.deliveredAt){
-          return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} días (empieza al entregar)</span></div>`;
+          return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} día(s) — <span class="muted">empieza al marcar como Entregado</span></span></div>`;
         }
         const endTs = r.deliveredAt + r.warrantyDays*86400000;
         const remaining = Math.ceil((endTs - Date.now())/86400000);
+        const elapsed = Math.max(0, Math.floor((Date.now() - r.deliveredAt)/86400000));
         const status = remaining>0
-          ? `<span class="warranty-tag active">Vigente · ${remaining} día(s)</span>`
+          ? `<span class="warranty-tag active">Vigente · ${remaining} día(s) restantes</span>`
           : `<span class="warranty-tag expired">Vencida</span>`;
-        return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} días · hasta ${fmtDate(endTs)} ${status}</span></div>`;
+        return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} día(s) · entregado el ${fmtDate(r.deliveredAt)} · llevan ${elapsed} día(s) · hasta ${fmtDate(endTs)} ${status}</span></div>`;
       })()}
 
       ${(()=>{
@@ -935,7 +1026,7 @@ const Views = (() => {
       <div class="section-title">Cambiar estado</div>
       <div class="select-elegant">
         <select id="quickStatus">
-          ${['pending','in_progress','completed','delivered'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
+          ${['pending','in_progress','completed','delivered','cancelled'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
         </select>
       </div>
       <div class="btn-row three">
@@ -1944,12 +2035,51 @@ const Views = (() => {
     const items = Object.values(stockStats);
     const totalStockUnits = items.reduce((a,i)=> a + Math.max(0,i.stock), 0);
 
+    // Resumen de ganancias para Compra/Venta
+    const _all = computeAllStats().total;
+    const _salesIncome = _all.salesIncome;
+    const _salesCost = _all.salesCost;
+    const _salesProfit = _all.salesProfit; // ganancia con inversión descontada
+    const _purchases = _all.purchases;     // inversión total en compras
+    const _pcls = _salesProfit>=0 ? 'pos' : 'neg';
+    const _net = _salesIncome - _purchases; // ventas menos inversión total
+    const _ncls = _net>=0 ? 'pos' : 'neg';
+    const profitBanner = `
+      <div class="cv-grid" style="margin:6px 0 14px">
+        <div class="cv-tile">
+          <div class="cv-tile-head">
+            <span class="cv-tile-label">Ventas — Ganancia</span>
+            <span class="cv-tile-profit ${_pcls}">${fmtMoney(_salesProfit)}</span>
+          </div>
+          <p class="cv-range">Ingresos por ventas menos el costo de la mercancía vendida.</p>
+          <div class="cv-tile-grid">
+            <div class="cv-mini sale"><span>Ventas (sin restar inversión)</span><b>${fmtMoney(_salesIncome)}</b></div>
+            <div class="cv-mini cost"><span>Costo mercancía vendida</span><b>${fmtMoney(_salesCost)}</b></div>
+            <div class="cv-mini count"><span>Ventas registradas</span><b>${_all.countSales}</b></div>
+          </div>
+        </div>
+        <div class="cv-tile">
+          <div class="cv-tile-head">
+            <span class="cv-tile-label">Compras — Inversión</span>
+            <span class="cv-tile-profit neg">${fmtMoney(_purchases)}</span>
+          </div>
+          <p class="cv-range">Dinero gastado en compras de stock. Se recupera al vender o usar las piezas.</p>
+          <div class="cv-tile-grid">
+            <div class="cv-mini buy"><span>Inversión total</span><b>${fmtMoney(_purchases)}</b></div>
+            <div class="cv-mini sale"><span>Ventas − Inversión total</span><b class="${_ncls==='pos'?'tx-profit pos':'tx-profit neg'}">${fmtMoney(_net)}</b></div>
+            <div class="cv-mini count"><span>Compras registradas</span><b>${_all.countPurchases}</b></div>
+          </div>
+        </div>
+      </div>`;
+
     view().innerHTML = `
       <div class="greeting">Compras y <span>Ventas</span></div>
       <p class="muted small" style="margin:-8px 4px 14px">
         Gestiona aquí tus compras de stock y tus ventas. Cada compra suma piezas a tu inventario;
         cada venta o pieza usada en una reparación las descuenta automáticamente.
       </p>
+
+      ${profitBanner}
 
       <div class="acc-card ${lowList.length?'open':''}">
         <button class="acc-head" data-acc type="button">
