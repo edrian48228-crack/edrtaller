@@ -1758,9 +1758,6 @@ const Views = (() => {
     } else if(!isSale){
       profitHtml = `<span class="tx-profit neg">Inversión $ ${total.toFixed(2)}</span>`;
     }
-    const gT = totalProfitNow();
-    const gCls = gT>=0 ? 'pos' : 'neg';
-    const generalHtml = `<span class="tx-profit ${gCls}" title="Ganancia total acumulada del negocio">G. general $ ${gT.toFixed(2)}</span>`;
     return `
       <div class="tx-card ${cls}" data-tx-id="${escape(t.id)}">
         <div class="tx-info">
@@ -1771,7 +1768,6 @@ const Views = (() => {
           <h3>${escape(t.product||'Producto')}</h3>
           <p class="muted small">${qty} × $ ${unit.toFixed(2)}${cp}</p>
           <p class="muted small">${fmtDate(t.date||t.createdAt)} ${profitHtml}</p>
-          <p class="muted xsmall" style="margin-top:2px">${generalHtml}</p>
         </div>
         <div class="tx-amount ${cls}">${sign} $ ${total.toFixed(2)}</div>
       </div>`;
@@ -1989,13 +1985,30 @@ const Views = (() => {
     const items = Object.values(stockStats);
     const totalStockUnits = items.reduce((a,i)=> a + Math.max(0,i.stock), 0);
 
-    const _cv = computeAllStats().total;
-    const _profitCls = _cv.salesProfit>=0 ? 'pos' : 'neg';
-    const _qs = `<div class="cv-quick-stats">
-      <div class="qs sale"><span class="qs-l">Ventas (entró)</span><span class="qs-v">$ ${_cv.salesIncome.toFixed(2)}</span><span class="qs-sub">${_cv.countSales} venta(s) — sin restar inversión</span></div>
-      <div class="qs ${_profitCls}"><span class="qs-l">Ganancia ventas</span><span class="qs-v">$ ${_cv.salesProfit.toFixed(2)}</span><span class="qs-sub">Ventas − costo mercancía</span></div>
-      <div class="qs buy"><span class="qs-l">Compras (gasto)</span><span class="qs-v">$ ${_cv.purchases.toFixed(2)}</span><span class="qs-sub">${_cv.countPurchases} compra(s) — inversión en stock</span></div>
-      <div class="qs"><span class="qs-l">Inversión vendida</span><span class="qs-v">$ ${_cv.salesCost.toFixed(2)}</span><span class="qs-sub">Costo de la mercancía ya vendida</span></div>
+    const _allStats = computeAllStats();
+    const _cv = _allStats.total;
+    const _pi = periodInfo();
+    const _row = (cls, label, day, week, month, year, total, count, sub) => `
+      <div class="cv-period ${cls}">
+        <div class="cv-period-head">
+          <span class="cv-period-title">${label}</span>
+          <span class="cv-period-total">$ ${total.toFixed(2)}</span>
+        </div>
+        <div class="cv-period-grid">
+          <span title="${escape(_pi.day)}"><b>Hoy</b>$ ${day.toFixed(2)}</span>
+          <span title="${escape(_pi.week)}"><b>Semana</b>$ ${week.toFixed(2)}</span>
+          <span title="${escape(_pi.month)}"><b>Mes</b>$ ${month.toFixed(2)}</span>
+          <span title="${escape(_pi.year)}"><b>Año</b>$ ${year.toFixed(2)}</span>
+        </div>
+        <p class="cv-period-sub">${count} movimiento(s) — ${sub}</p>
+      </div>`;
+    const _qs = `<div class="cv-periods">
+      ${_row('sale','Total de ventas',
+        _allStats.day.salesIncome,_allStats.week.salesIncome,_allStats.month.salesIncome,_allStats.year.salesIncome,_cv.salesIncome,
+        _cv.countSales,'suma de todo lo facturado en ventas')}
+      ${_row('buy','Total de compras',
+        _allStats.day.purchases,_allStats.week.purchases,_allStats.month.purchases,_allStats.year.purchases,_cv.purchases,
+        _cv.countPurchases,'suma de todo lo invertido en compras de stock')}
     </div>`;
     view().innerHTML = `
       <div class="greeting">Compras y <span>Ventas</span></div>
@@ -2210,9 +2223,7 @@ const Views = (() => {
         <div class="detail-row"><span class="lbl">Inversión</span><span class="val tx-profit neg">$ ${total.toFixed(2)}</span></div>
         <div class="detail-row"><span class="lbl">Ganancia de esta compra</span><span class="val muted">— (se realiza al vender o usar la pieza)</span></div>`;
     }
-    const _gT = totalProfitNow();
-    const _gCls = _gT>=0 ? 'pos' : 'neg';
-    const generalRow = `<div class="detail-row"><span class="lbl">Ganancia general</span><span class="val tx-profit ${_gCls}">$ ${_gT.toFixed(2)}</span></div>`;
+    const generalRow = '';
     UI.openModal(`
       <h2 style="margin:0 0 4px;font-size:20px">${escape(t.product||'Producto')}</h2>
       <p class="muted" style="margin:0 0 14px">${escape(t.id)} · <span class="tx-badge ${isSale?'sale':'purchase'}">${txLabel(t.type)}</span></p>

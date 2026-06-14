@@ -960,9 +960,11 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .forgot-link{background:none;border:0;color:var(--primary-glow);font-size:13px;margin-top:10px;cursor:pointer;text-decoration:underline;padding:6px;width:100%}
 .forgot-link:hover{color:var(--brown-glow)}
 
-.admin-menu{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
-@media (max-width:520px){.admin-menu{grid-template-columns:repeat(4,1fr);gap:8px}.adm-tile{padding:10px 4px;min-height:84px}.adm-tile .adm-ico svg{width:22px;height:22px}.adm-tile .adm-t{font-size:12px}.adm-tile .adm-s{font-size:10px}}
-.adm-tile{background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:14px;padding:14px 8px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;cursor:pointer;color:var(--text);transition:transform .12s,border-color .15s,box-shadow .15s;text-align:center;min-height:96px}
+.admin-menu{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:18px}
+.admin-menu .adm-tile{min-width:0}
+@media (max-width:560px){.admin-menu{gap:6px}.adm-tile{padding:8px 4px;min-height:76px}.adm-tile .adm-ico svg{width:20px;height:20px}.adm-tile .adm-t{font-size:11px}.adm-tile .adm-s{font-size:9.5px;line-height:1.15}}
+@media (max-width:380px){.adm-tile .adm-s{display:none}.adm-tile{min-height:64px}}
+.adm-tile{background:linear-gradient(135deg,var(--surface-2),var(--surface));border:1px solid var(--border);border-radius:14px;padding:14px 6px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:6px;cursor:pointer;color:var(--text);transition:transform .12s,border-color .15s,box-shadow .15s;text-align:center;min-height:96px;min-width:0;overflow:hidden;word-break:break-word}
 .adm-tile:hover,.adm-tile:active{border-color:var(--primary-glow);transform:translateY(-2px);box-shadow:0 6px 18px rgba(122,31,31,.25)}
 .adm-tile .adm-ico{color:var(--primary-glow);display:flex}
 .adm-tile .adm-ico svg{width:26px;height:26px}
@@ -1218,3 +1220,28 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 /* ensure no horizontal overflow on small screens */
 html,body{max-width:100%;overflow-x:hidden}
 .tx-card,.repair-card,.admin-card,.acc-card,.cv-tile,.gh-panel{min-width:0;overflow-wrap:anywhere}
+
+/* === v21 additions === */
+.cv-periods{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:4px 0 14px}
+.cv-period{
+  background:linear-gradient(135deg,var(--surface-2),var(--surface));
+  border:1px solid var(--border);border-radius:14px;padding:12px;min-width:0
+}
+.cv-period.sale{border-color:rgba(127,179,255,.35);box-shadow:inset 0 0 0 1px rgba(127,179,255,.06)}
+.cv-period.buy{border-color:rgba(255,179,122,.35);box-shadow:inset 0 0 0 1px rgba(255,179,122,.06)}
+.cv-period-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.cv-period-title{font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
+.cv-period-total{font-size:18px;font-weight:800;overflow-wrap:anywhere}
+.cv-period.sale .cv-period-total{color:#9fdfff}
+.cv-period.buy .cv-period-total{color:#ffb37a}
+.cv-period-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.cv-period-grid span{
+  display:flex;flex-direction:column;background:rgba(255,255,255,.03);
+  border:1px solid var(--border);border-radius:10px;padding:6px 8px;font-size:12px;min-width:0;overflow-wrap:anywhere
+}
+.cv-period-grid span b{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-bottom:2px}
+.cv-period-sub{font-size:11px;color:var(--muted);margin:8px 0 0}
+@media (max-width:560px){.cv-periods{grid-template-columns:1fr}.cv-period-total{font-size:17px}}
+
+/* prevent admin cards from overflowing */
+.admin-card{min-width:0;overflow-wrap:anywhere}
