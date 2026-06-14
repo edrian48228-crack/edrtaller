@@ -1921,6 +1921,130 @@ const Views = (() => {
     });
   }
 
+  // ===== Desglose mensual/anual de ganancias =====
+  function monthlyBreakdownHtml(){
+    const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    // Estructura: years[year][month] = { repIncome, repCost, salesWithInvIncome, salesWithInvCost, salesNoInvIncome, countRep, countSalesWith, countSalesNo }
+    const years = {};
+    function bucket(y,m){
+      if(!years[y]) years[y] = {};
+      if(!years[y][m]) years[y][m] = {
+        repIncome:0, repCost:0,
+        salesWithInvIncome:0, salesWithInvCost:0, salesNoInvIncome:0,
+        countRep:0, countSalesWith:0, countSalesNo:0
+      };
+      return years[y][m];
+    }
+    // Ventas
+    for(const tx of DB.transactions){
+      if(tx.type!=='sale') continue;
+      const ts = tx.date || tx.createdAt || 0;
+      const d = new Date(ts);
+      const b = bucket(d.getFullYear(), d.getMonth());
+      const total = Number(tx.total||0);
+      if(tx.costTotal != null){
+        b.salesWithInvIncome += total;
+        b.salesWithInvCost  += Number(tx.costTotal||0);
+        b.countSalesWith++;
+      } else {
+        b.salesNoInvIncome += total;
+        b.countSalesNo++;
+      }
+    }
+    // Reparaciones entregadas
+    for(const r of DB.repairs){
+      if(r.status!=='delivered') continue;
+      const ts = r.deliveredAt || r.updatedAt || r.createdAt || 0;
+      const d = new Date(ts);
+      const b = bucket(d.getFullYear(), d.getMonth());
+      const price = Number(r.price||0);
+      const partsCost = (r.parts||[]).reduce((a,p)=> a + Number(p.unitCost||0)*Number(p.qty||0), 0);
+      b.repIncome += price;
+      b.repCost   += partsCost;
+      b.countRep++;
+    }
+    const yKeys = Object.keys(years).map(Number).sort((a,b)=>b-a);
+    if(!yKeys.length){
+      return `<p class="muted small" style="margin:0">Aún no hay ventas ni reparaciones entregadas para desglosar.</p>`;
+    }
+    const nowY = new Date().getFullYear();
+    const html = yKeys.map(y=>{
+      const months = years[y];
+      const mKeys = Object.keys(months).map(Number).sort((a,b)=>b-a);
+      // Totales del año
+      let yRepProfit=0, yWithProfit=0, yNoProfit=0, yWithInv=0;
+      const rowsM = mKeys.map(m=>{
+        const b = months[m];
+        const repProfit = b.repIncome - b.repCost;
+        const withProfit = b.salesWithInvIncome - b.salesWithInvCost;
+        const noProfit = b.salesNoInvIncome;
+        const monthTotal = repProfit + withProfit + noProfit;
+        yRepProfit += repProfit; yWithProfit += withProfit; yNoProfit += noProfit; yWithInv += b.salesWithInvCost;
+        const cls = monthTotal>=0?'pos':'neg';
+        return `
+          <div class="mb-month">
+            <div class="mb-month-head">
+              <span class="mb-month-name">${MONTHS[m]}</span>
+              <span class="mb-month-total ${cls}">$ ${monthTotal.toFixed(2)}</span>
+            </div>
+            <div class="mb-rows">
+              <div class="mb-row rep">
+                <span class="mb-row-label">Reparaciones</span>
+                <span class="mb-row-meta">${b.countRep} entregada(s) · Ingreso $ ${b.repIncome.toFixed(2)} · Piezas $ ${b.repCost.toFixed(2)}</span>
+                <span class="mb-row-val ${repProfit>=0?'pos':'neg'}">$ ${repProfit.toFixed(2)}</span>
+              </div>
+              <div class="mb-row swith">
+                <span class="mb-row-label">Ventas con inversión</span>
+                <span class="mb-row-meta">${b.countSalesWith} venta(s) · Ingreso $ ${b.salesWithInvIncome.toFixed(2)} · Costo $ ${b.salesWithInvCost.toFixed(2)}</span>
+                <span class="mb-row-val ${withProfit>=0?'pos':'neg'}">$ ${withProfit.toFixed(2)}</span>
+              </div>
+              <div class="mb-row sno">
+                <span class="mb-row-label">Ventas sin inversión</span>
+                <span class="mb-row-meta">${b.countSalesNo} venta(s) · Ingreso $ ${b.salesNoInvIncome.toFixed(2)} · Sin costo registrado</span>
+                <span class="mb-row-val ${noProfit>=0?'pos':'neg'}">$ ${noProfit.toFixed(2)}</span>
+              </div>
+            </div>
+          </div>`;
+      }).join('');
+      const yearTotal = yRepProfit + yWithProfit + yNoProfit;
+      const ycls = yearTotal>=0?'pos':'neg';
+      const open = (y===nowY) ? 'open' : '';
+      return `
+        <div class="mb-year ${open}">
+          <button class="mb-year-head" data-mbyear type="button" aria-expanded="${open?'true':'false'}">
+            <span class="mb-year-name">${y}</span>
+            <span class="mb-year-meta">
+              <span class="mb-pill rep" title="Ganancia reparaciones">Rep $ ${yRepProfit.toFixed(2)}</span>
+              <span class="mb-pill swith" title="Ganancia ventas con inversión">V/Inv $ ${yWithProfit.toFixed(2)}</span>
+              <span class="mb-pill sno" title="Ingreso ventas sin inversión">V/Sin $ ${yNoProfit.toFixed(2)}</span>
+            </span>
+            <span class="mb-year-total ${ycls}">$ ${yearTotal.toFixed(2)}</span>
+            <span class="mb-year-chev">▾</span>
+          </button>
+          <div class="mb-year-body" ${open?'':'hidden'}>${rowsM}</div>
+        </div>`;
+    }).join('');
+    return `
+      <p class="muted small" style="margin:0 0 10px">
+        Ganancia neta por <b>mes</b> y por <b>año</b>: reparaciones entregadas, ventas <b>con inversión</b> registrada (ingreso − costo) y ventas <b>sin inversión</b> (ingreso completo, sin costo asociado).
+      </p>
+      <div class="mb-list">${html}</div>`;
+  }
+
+  function bindMonthlyBreakdown(){
+    view().querySelectorAll('[data-mbyear]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const card = btn.closest('.mb-year');
+        const body = card && card.querySelector('.mb-year-body');
+        if(!body) return;
+        const open = !body.hasAttribute('hidden');
+        if(open){ body.setAttribute('hidden',''); card.classList.remove('open'); btn.setAttribute('aria-expanded','false'); }
+        else { body.removeAttribute('hidden'); card.classList.add('open'); btn.setAttribute('aria-expanded','true'); }
+      });
+    });
+  }
+
+
   function summary(){
     const _stats = computeAllStats();
     const _gT = _stats.total.totalProfit;
@@ -1956,11 +2080,22 @@ const Views = (() => {
         <div class="acc-body">${sysStatsTilesHtml()}</div>
       </div>
 
+      <div class="acc-card open">
+        <button class="acc-head" data-acc type="button">
+          <span class="acc-ico">${ICONS.box}</span>
+          <span class="acc-title">Ganancias por mes y año</span>
+          <span class="acc-sub">Reparaciones, ventas con inversión y ventas sin inversión</span>
+          <span class="acc-chev"></span>
+        </button>
+        <div class="acc-body">${monthlyBreakdownHtml()}</div>
+      </div>
+
       <div class="btn-row" style="margin-top:14px">
         <button class="btn-secondary" id="goCvBtn">${ICONS.box} Ir a Compra/Venta</button>
       </div>
     `;
     bindAccordions();
+    bindMonthlyBreakdown();
     const gb = document.getElementById('goCvBtn');
     if(gb) gb.onclick = ()=> App.go('sales');
   }

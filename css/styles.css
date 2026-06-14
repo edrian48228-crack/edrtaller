@@ -1285,3 +1285,64 @@ html,body{max-width:100%;overflow-x:hidden}
 .cd-meta b.pos{color:#7be29a}
 .cd-meta b.neg{color:#ff8a7a}
 .cd-meta b.muted{color:var(--muted)}
+
+/* ===== Desglose mensual / anual de ganancias ===== */
+.mb-list{display:flex; flex-direction:column; gap:10px}
+.mb-year{
+  background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.08);
+  border-radius:14px; overflow:hidden;
+}
+.mb-year-head{
+  all:unset; cursor:pointer; display:grid;
+  grid-template-columns:auto 1fr auto auto; gap:10px;
+  align-items:center; padding:12px 14px; width:100%; box-sizing:border-box;
+}
+.mb-year-head:focus-visible{outline:2px solid rgba(127,179,255,.6); outline-offset:-2px}
+.mb-year-name{font-weight:800; font-size:16px; color:#fff; letter-spacing:.3px}
+.mb-year-meta{display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-start}
+.mb-pill{
+  font-size:10.5px; font-weight:700; letter-spacing:.3px;
+  padding:3px 8px; border-radius:999px; color:#fff;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.08);
+  font-variant-numeric:tabular-nums;
+}
+.mb-pill.rep{color:#9fdfff; border-color:rgba(127,179,255,.35)}
+.mb-pill.swith{color:#7be29a; border-color:rgba(123,226,154,.35)}
+.mb-pill.sno{color:#ffd76a; border-color:rgba(255,215,106,.35)}
+.mb-year-total{font-weight:800; font-size:15px; font-variant-numeric:tabular-nums}
+.mb-year-total.pos{color:#7be29a}
+.mb-year-total.neg{color:#ff8a7a}
+.mb-year-chev{color:var(--muted); transition:transform .2s ease}
+.mb-year.open .mb-year-chev{transform:rotate(180deg)}
+.mb-year-body{
+  display:flex; flex-direction:column; gap:8px;
+  padding:0 12px 12px; border-top:1px dashed rgba(255,255,255,.1);
+}
+.mb-month{
+  background:rgba(255,255,255,.025); border:1px solid rgba(255,255,255,.06);
+  border-radius:12px; padding:10px 12px;
+}
+.mb-month-head{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:6px}
+.mb-month-name{font-weight:700; color:#fff; font-size:13px}
+.mb-month-total{font-weight:800; font-variant-numeric:tabular-nums; font-size:14px}
+.mb-month-total.pos{color:#7be29a}
+.mb-month-total.neg{color:#ff8a7a}
+.mb-rows{display:flex; flex-direction:column; gap:4px}
+.mb-row{
+  display:grid; grid-template-columns:1fr auto; column-gap:10px; row-gap:2px;
+  padding:6px 8px; border-radius:8px; background:rgba(255,255,255,.02);
+  border-left:3px solid rgba(255,255,255,.15);
+}
+.mb-row.rep{border-left-color:#7da7ff}
+.mb-row.swith{border-left-color:#4cc973}
+.mb-row.sno{border-left-color:#e8c46a}
+.mb-row-label{font-size:12px; font-weight:700; color:#fff}
+.mb-row-val{font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; text-align:right}
+.mb-row-val.pos{color:#7be29a}
+.mb-row-val.neg{color:#ff8a7a}
+.mb-row-meta{grid-column:1/-1; font-size:11px; color:var(--muted)}
+@media (max-width:560px){
+  .mb-year-head{grid-template-columns:auto 1fr auto; row-gap:6px}
+  .mb-year-meta{grid-column:1/-1; order:3}
+  .mb-year-chev{order:2}
+}
