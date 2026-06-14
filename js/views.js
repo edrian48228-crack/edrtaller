@@ -1988,27 +1988,95 @@ const Views = (() => {
     const _allStats = computeAllStats();
     const _cv = _allStats.total;
     const _pi = periodInfo();
-    const _row = (cls, label, day, week, month, year, total, count, sub) => `
+
+    // Lista detallada de ventas (con inversión y ganancia) y compras (inversión)
+    const allSales = DB.transactions.filter(t=>t.type==='sale')
+      .sort((a,b)=>(b.date||b.createdAt||0)-(a.date||a.createdAt||0));
+    const allPurchases = DB.transactions.filter(t=>t.type==='purchase')
+      .sort((a,b)=>(b.date||b.createdAt||0)-(a.date||a.createdAt||0));
+
+    let totSalesInv = 0, totSalesProfit = 0;
+    const salesRows = allSales.map(t=>{
+      const total = Number(t.total||0);
+      const qty = Number(t.quantity||0);
+      const hasCost = t.costTotal != null;
+      const inv = hasCost ? Number(t.costTotal||0) : Number(t.unitCost||0)*qty;
+      const profit = hasCost ? (total - inv) : null;
+      totSalesInv += inv;
+      if(profit != null) totSalesProfit += profit;
+      const pcls = profit==null ? 'muted' : (profit>=0?'pos':'neg');
+      const profitTxt = profit==null ? '—' : `$ ${profit.toFixed(2)}`;
+      return `
+        <button class="cv-detail-row" data-tx="${escape(t.id)}" type="button">
+          <span class="cd-main">
+            <b>${escape(t.product||'Producto')}</b>
+            <span class="cd-sub">${qty} u · ${fmtDate(t.date||t.createdAt)}${t.counterparty?` · ${escape(t.counterparty)}`:''}</span>
+          </span>
+          <span class="cd-nums">
+            <span class="cd-total sale">$ ${total.toFixed(2)}</span>
+            <span class="cd-meta">Inv. $ ${inv.toFixed(2)} · <b class="${pcls}">Gan. ${profitTxt}</b></span>
+          </span>
+        </button>`;
+    }).join('');
+
+    let totPurchInv = 0;
+    const purchaseRows = allPurchases.map(t=>{
+      const total = Number(t.total||0);
+      const qty = Number(t.quantity||0);
+      totPurchInv += total;
+      return `
+        <button class="cv-detail-row" data-tx="${escape(t.id)}" type="button">
+          <span class="cd-main">
+            <b>${escape(t.product||'Producto')}</b>
+            <span class="cd-sub">${qty} u · ${fmtDate(t.date||t.createdAt)}${t.counterparty?` · ${escape(t.counterparty)}`:''}</span>
+          </span>
+          <span class="cd-nums">
+            <span class="cd-total buy">$ ${total.toFixed(2)}</span>
+            <span class="cd-meta">Inversión</span>
+          </span>
+        </button>`;
+    }).join('');
+
+    const salesDetailsHtml = allSales.length
+      ? `<div class="cv-detail-summary">
+           <span>Inversión total: <b>$ ${totSalesInv.toFixed(2)}</b></span>
+           <span>Ganancia total: <b class="${totSalesProfit>=0?'pos':'neg'}">$ ${totSalesProfit.toFixed(2)}</b></span>
+         </div>
+         <div class="cv-detail-list">${salesRows}</div>`
+      : `<p class="muted small" style="margin:6px 2px 0">Aún no hay ventas registradas.</p>`;
+
+    const purchDetailsHtml = allPurchases.length
+      ? `<div class="cv-detail-summary">
+           <span>Inversión total: <b>$ ${totPurchInv.toFixed(2)}</b></span>
+           <span class="muted">La ganancia se realiza al vender la pieza o usarla en una reparación.</span>
+         </div>
+         <div class="cv-detail-list">${purchaseRows}</div>`
+      : `<p class="muted small" style="margin:6px 2px 0">Aún no hay compras registradas.</p>`;
+
+    const _row = (cls, label, day, week, month, year, total, count, sub, detailsHtml) => `
       <div class="cv-period ${cls}">
-        <div class="cv-period-head">
-          <span class="cv-period-title">${label}</span>
-          <span class="cv-period-total">$ ${total.toFixed(2)}</span>
-        </div>
-        <div class="cv-period-grid">
-          <span title="${escape(_pi.day)}"><b>Hoy</b>$ ${day.toFixed(2)}</span>
-          <span title="${escape(_pi.week)}"><b>Semana</b>$ ${week.toFixed(2)}</span>
-          <span title="${escape(_pi.month)}"><b>Mes</b>$ ${month.toFixed(2)}</span>
-          <span title="${escape(_pi.year)}"><b>Año</b>$ ${year.toFixed(2)}</span>
-        </div>
-        <p class="cv-period-sub">${count} movimiento(s) — ${sub}</p>
+        <button class="cv-period-toggle" data-cvtoggle type="button" aria-expanded="false">
+          <span class="cv-period-head">
+            <span class="cv-period-title">${label}</span>
+            <span class="cv-period-total">$ ${total.toFixed(2)}</span>
+          </span>
+          <span class="cv-period-grid">
+            <span title="${escape(_pi.day)}"><b>Hoy</b>$ ${day.toFixed(2)}</span>
+            <span title="${escape(_pi.week)}"><b>Semana</b>$ ${week.toFixed(2)}</span>
+            <span title="${escape(_pi.month)}"><b>Mes</b>$ ${month.toFixed(2)}</span>
+            <span title="${escape(_pi.year)}"><b>Año</b>$ ${year.toFixed(2)}</span>
+          </span>
+          <span class="cv-period-sub">${count} movimiento(s) — ${sub} · <span class="cv-period-more">Ver detalle ▾</span></span>
+        </button>
+        <div class="cv-period-details" hidden>${detailsHtml}</div>
       </div>`;
     const _qs = `<div class="cv-periods">
       ${_row('sale','Total de ventas',
         _allStats.day.salesIncome,_allStats.week.salesIncome,_allStats.month.salesIncome,_allStats.year.salesIncome,_cv.salesIncome,
-        _cv.countSales,'suma de todo lo facturado en ventas')}
+        _cv.countSales,'suma de todo lo facturado en ventas', salesDetailsHtml)}
       ${_row('buy','Total de compras',
         _allStats.day.purchases,_allStats.week.purchases,_allStats.month.purchases,_allStats.year.purchases,_cv.purchases,
-        _cv.countPurchases,'suma de todo lo invertido en compras de stock')}
+        _cv.countPurchases,'suma de todo lo invertido en compras de stock', purchDetailsHtml)}
     </div>`;
     view().innerHTML = `
       <div class="greeting">Compras y <span>Ventas</span></div>
@@ -2016,6 +2084,15 @@ const Views = (() => {
         Gestiona aquí tus compras de stock y tus ventas. Cada compra suma piezas a tu inventario;
         cada venta o pieza usada en una reparación las descuenta automáticamente.
       </p>
+
+      <div class="btn-row" style="margin:6px 0 10px">
+        <button class="btn-secondary" id="newSaleBtn">${ICONS.plus} Nueva venta</button>
+        <button class="btn-secondary" id="newPurchaseBtn">${ICONS.plus} Nueva compra</button>
+      </div>
+      <div class="select-elegant" style="margin:0 0 14px">
+        <select id="txFilter" aria-label="Filtrar movimientos">${opts}</select>
+      </div>
+
       ${_qs}
 
       <div class="acc-card ${lowList.length?'open':''}">
@@ -2028,18 +2105,24 @@ const Views = (() => {
         <div class="acc-body">${stockPanelHtml()}</div>
       </div>
 
-      <div class="btn-row" style="margin:14px 0 6px">
-        <button class="btn-secondary" id="newSaleBtn">${ICONS.plus} Nueva venta</button>
-        <button class="btn-secondary" id="newPurchaseBtn">${ICONS.plus} Nueva compra</button>
-      </div>
-      <div class="select-elegant" style="margin-top:10px">
-        <select id="txFilter" aria-label="Filtrar movimientos">${opts}</select>
-      </div>
       ${list.length ? grouped : emptyState('Sin movimientos','Registra tu primera venta o compra')}
     `;
     document.getElementById('newSaleBtn').onclick = ()=> newTransaction('sale');
     document.getElementById('newPurchaseBtn').onclick = ()=> newTransaction('purchase');
     document.getElementById('txFilter').addEventListener('change', e=> sales(e.target.value));
+    view().querySelectorAll('[data-cvtoggle]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const card = btn.closest('.cv-period');
+        const panel = card && card.querySelector('.cv-period-details');
+        if(!panel) return;
+        const open = !panel.hasAttribute('hidden');
+        if(open){ panel.setAttribute('hidden',''); btn.setAttribute('aria-expanded','false'); card.classList.remove('open'); }
+        else { panel.removeAttribute('hidden'); btn.setAttribute('aria-expanded','true'); card.classList.add('open'); }
+      });
+    });
+    view().querySelectorAll('.cv-detail-row[data-tx]').forEach(b=>{
+      b.addEventListener('click', ()=> showTransaction(b.dataset.tx));
+    });
     bindAccordions();
     bindStockInputs();
     bindTxCards();
