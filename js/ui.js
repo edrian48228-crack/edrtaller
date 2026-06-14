@@ -30,8 +30,7 @@ const UI = (() => {
   function statusLabel(s){
     return ({
       pending:'Pendiente', in_progress:'En proceso',
-      awaiting:'Esperando recogida', completed:'Completada', delivered:'Entregada',
-      cancelled:'Cancelada'
+      awaiting:'Esperando recogida', completed:'Completada', delivered:'Entregada'
     })[s] || s;
   }
   // Render del nombre del sistema con segunda palabra en marrón
