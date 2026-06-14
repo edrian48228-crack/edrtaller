@@ -100,7 +100,7 @@ input,select,textarea{font-family:inherit;font-size:16px;max-width:100%}
 }
 .creator-left{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden}
 .creator-left b{color:var(--primary-glow);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 8px rgba(155,42,42,.35)}
-.creator-right{display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:auto}
+.creator-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .creator-chip{
   display:inline-flex;align-items:center;gap:4px;
   padding:3px 8px;border-radius:999px;
@@ -111,30 +111,8 @@ input,select,textarea{font-family:inherit;font-size:16px;max-width:100%}
 .creator-chip.wa{color:#a8e3b3;border-color:rgba(76,201,115,.35)}
 .creator-chip.tel{color:#e8c46a;border-color:rgba(232,196,106,.35)}
 .creator-chip.sms{color:#8bb5ff;border-color:rgba(108,160,255,.35)}
-/* Iconos solo: grandes pero sin agregar alto a la fila */
-.creator-chip.icon-only{
-  padding:0;width:36px;height:28px;justify-content:center;gap:0;
-  border-radius:8px;line-height:0;
-  background:linear-gradient(180deg,var(--surface-2),rgba(0,0,0,.15));
-  box-shadow:0 1px 0 rgba(255,255,255,.04) inset, 0 2px 6px rgba(0,0,0,.25)
-}
-.creator-chip.icon-only svg{width:22px;height:22px}
-.creator-chip.icon-only:active{transform:scale(.95)}
-
-/* Contador total de reparaciones bajo la fila del creador */
-.brand-stats{
-  display:flex;flex-wrap:wrap;gap:6px;margin-top:6px
-}
-.brand-stats .bs-chip{
-  display:inline-flex;align-items:center;gap:6px;
-  padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;
-  background:linear-gradient(135deg,rgba(155,42,42,.22),rgba(232,196,106,.14));
-  border:1px solid rgba(232,196,106,.35);color:#f5e6c4;
-  letter-spacing:.3px
-}
-.brand-stats .bs-chip b{color:#fff;font-weight:800}
-.brand-stats .bs-chip.warn{background:linear-gradient(135deg,rgba(255,123,107,.25),rgba(232,196,106,.1));border-color:rgba(255,123,107,.45)}
-
+.creator-chip.icon-only{padding:5px;width:26px;height:26px;justify-content:center;gap:0}
+.creator-chip.icon-only svg{width:14px;height:14px}
 
 .icon-btn{
   background:transparent;border:0;color:var(--text);padding:8px;border-radius:10px;cursor:pointer;flex-shrink:0
@@ -1203,35 +1181,3 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .profit-hero.pos .ph-amount{color:#7be0a0;text-shadow:0 0 14px rgba(76,201,115,.25)}
 .profit-hero.neg .ph-amount{color:#ff9b8b}
 .profit-hero .ph-help{font-size:11px;color:var(--muted)}
-
-/* ============= v21: mejoras ============= */
-/* Hero de ganancia en Compra/Venta */
-.cv-hero{
-  margin:6px 0 14px;padding:14px 16px;border-radius:14px;
-  background:linear-gradient(135deg, rgba(76,201,115,.22), rgba(232,196,106,.16));
-  border:1px solid rgba(232,196,106,.45);
-  display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;align-items:center;
-  box-shadow:0 6px 20px rgba(0,0,0,.25)
-}
-.cv-hero.neg{background:linear-gradient(135deg, rgba(255,123,107,.22), rgba(232,196,106,.12));border-color:rgba(255,123,107,.45)}
-.cv-hero .cvh-row{display:flex;flex-direction:column;gap:2px}
-.cv-hero .cvh-row .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:#d8c8a3}
-.cv-hero .cvh-row .val{font-size:18px;font-weight:800;color:#fff}
-.cv-hero .cvh-row .val.pos{color:#a8e3b3}
-.cv-hero .cvh-row .val.neg{color:#ff9b8b}
-.cv-hero .cvh-big{grid-column:1/-1;display:flex;justify-content:space-between;align-items:baseline;border-top:1px dashed rgba(255,255,255,.18);padding-top:8px;margin-top:4px}
-.cv-hero .cvh-big .lbl{font-size:12px;color:#d8c8a3;text-transform:uppercase;letter-spacing:.8px}
-.cv-hero .cvh-big .val{font-size:22px;font-weight:900;color:#fff}
-
-/* Hint de borrador restaurado */
-.draft-restored{
-  margin:0 0 12px;padding:8px 12px;border-radius:10px;
-  background:rgba(232,196,106,.12);border:1px solid rgba(232,196,106,.4);
-  color:#f5e6c4;font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:8px
-}
-.draft-restored button{background:transparent;border:1px solid rgba(255,255,255,.25);color:#fff;padding:4px 10px;border-radius:8px;cursor:pointer;font-size:11px}
-
-/* Garantía vigente/vencida más claras */
-.warranty-tag{display:inline-block;margin-left:6px;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
-.warranty-tag.active{background:rgba(76,201,115,.2);color:#a8e3b3;border:1px solid rgba(76,201,115,.4)}
-.warranty-tag.expired{background:rgba(255,123,107,.18);color:#ff9b8b;border:1px solid rgba(255,123,107,.4)}

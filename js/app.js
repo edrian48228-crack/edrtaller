@@ -99,23 +99,7 @@ const App = (() => {
     if(al) al.innerHTML = lh;
     if(ll) ll.innerHTML = lh;
     renderCreatorChips();
-    renderBrandStats();
   }
-
-  function renderBrandStats(){
-    const box = document.getElementById('brandStats');
-    if(!box) return;
-    try{
-      const total = DB.repairs.length;
-      const pend = DB.byStatus('pending').length + DB.byStatus('in_progress').length;
-      const todayP = (DB.todayPending && DB.todayPending().length) || 0;
-      box.innerHTML =
-        `<span class="bs-chip" title="Total de reparaciones registradas">📋 Total <b>${total}</b></span>` +
-        `<span class="bs-chip" title="Pendientes y en proceso">⏳ Pendientes <b>${pend}</b></span>` +
-        (todayP>0 ? `<span class="bs-chip warn" title="Entrega para hoy o vencidas">⚠️ Hoy <b>${todayP}</b></span>` : '');
-    }catch(e){ box.innerHTML=''; }
-  }
-
 
   function renderCreatorChips(){
     const box = document.getElementById('creatorContacts');
@@ -155,7 +139,6 @@ const App = (() => {
     else if(v==='chooser') Views.newChooser();
     else if(v==='search') Views.search();
     else if(v==='admin') Views.admin();
-    try{ renderBrandStats(); }catch(e){}
     window.scrollTo(0,0);
   }
   function refresh(){ go(current, currentArg); }
@@ -185,9 +168,6 @@ const App = (() => {
     });
     const sb = document.getElementById('headerSearchBtn');
     if(sb) sb.addEventListener('click', ()=> go('search'));
-    // refrescar contador del header cuando se navega
-    const _go = go;
-    window.__appGoOriginal = _go;
     if(Auth.isLoggedIn()) showApp();
     else {
       if(!DB.settings.passwordHash){

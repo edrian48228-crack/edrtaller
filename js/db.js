@@ -80,8 +80,8 @@ const DB = (() => {
       if(r.deliveredAt === undefined){
         r.deliveredAt = r.status === 'delivered' ? (r.updatedAt || r.createdAt || null) : null;
         changed = true;
-      }
       if(!Array.isArray(r.parts)){ r.parts = []; changed = true; }
+    }
     }
     if(!Array.isArray(data.transactions)){ data.transactions = []; changed = true; }
     if(typeof data.txCounter !== 'number'){ data.txCounter = 1; changed = true; }

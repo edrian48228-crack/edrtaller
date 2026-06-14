@@ -401,38 +401,19 @@ const Views = (() => {
 
 
         <button type="submit" class="btn-primary" style="margin-top:8px">${existing?'Guardar cambios':'Registrar reparación'}</button>
-        ${(existing && existing.status==='delivered') ? '' : `<button type="button" class="btn-primary btn-cancel" id="cancelRepairBtn" style="margin-top:10px">
+        <button type="button" class="btn-primary btn-cancel" id="cancelRepairBtn" style="margin-top:10px">
           ${ICONS.cancel} Cancelar reparación
-        </button>`}
+        </button>
       </form>
     `;
 
-    // Cerrar (arriba) — confirmar si hay datos sin guardar
-    document.getElementById('formCloseTop').onclick = async ()=>{
-      const f = document.getElementById('repairForm');
-      let hasData = false;
-      if(f){
-        const fd = new FormData(f);
-        for(const [k,v] of fd.entries()){
-          if(k==='status' || k==='createdAt' || k==='dueDate' || k==='warrantyDays') continue;
-          if(String(v||'').trim()){ hasData = true; break; }
-        }
-        if(photos.device.length || photos.client || acceptAudio || parts.length) hasData = true;
-      }
-      if(!existing && hasData){
-        const ok = await UI.confirmDialog({
-          title:'¿Salir sin guardar?',
-          message:'Tienes información sin guardar de esta reparación. Si sales ahora se perderá. ¿Continuar?',
-          okText:'Salir sin guardar', cancelText:'Seguir editando', danger:true
-        });
-        if(!ok) return;
-      }
+    // Cerrar (arriba)
+    document.getElementById('formCloseTop').onclick = ()=>{
       try{ if(rec) rec.cancel(); }catch(e){}
       App.go(existing ? 'repairs' : 'dashboard');
     };
     // Cancelar reparación (abajo)
-    const _cancelBtn = document.getElementById('cancelRepairBtn');
-    if(_cancelBtn) _cancelBtn.onclick = async ()=>{
+    document.getElementById('cancelRepairBtn').onclick = async ()=>{
       const ok = await UI.confirmDialog({
         title: existing ? 'Cancelar reparación' : 'Cancelar y salir',
         message: existing
@@ -742,18 +723,33 @@ const Views = (() => {
     };
     renderParts();
 
-    // Garantía: siempre disponible (ya no se bloquea por fecha de entrega pasada)
+    // ===== Lógica de garantía dependiente de la fecha de entrega =====
     function syncWarrantyAvailability(){
+      const dueEl = document.getElementById('dueDateInput');
       const wEl = document.getElementById('warrantyDaysInput');
       const hint = document.getElementById('warrantyHint');
-      if(!wEl || !hint) return;
+      if(!dueEl || !wEl || !hint) return;
+      const val = dueEl.value;
+      if(val){
+        const t0 = new Date(); t0.setHours(0,0,0,0);
+        const due = new Date(val+'T12:00:00').getTime();
+        if(due < t0.getTime()){
+          wEl.value = '';
+          wEl.disabled = true;
+          wEl.placeholder = 'Sin garantía';
+          hint.innerHTML = '<b>Sin garantía:</b> la fecha de entrega ya pasó, no se aplica garantía.';
+          hint.style.color = '#ff9b8b';
+          return;
+        }
+      }
       wEl.disabled = false;
       wEl.placeholder = 'Ej: 30';
-      hint.innerHTML = 'La garantía comienza el día que marques el equipo como <b>Entregado</b> — los días restantes se irán actualizando solos.';
+      hint.innerHTML = 'La garantía comienza el día que marques el equipo como <b>Entregado</b>.';
       hint.style.color = '';
     }
+    const dueEl = document.getElementById('dueDateInput');
+    if(dueEl) dueEl.addEventListener('change', syncWarrantyAvailability);
     syncWarrantyAvailability();
-
 
 
 
@@ -814,8 +810,10 @@ const Views = (() => {
         data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
         data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
         const wd = fd.get('warrantyDays');
-        // Garantía: independiente de la fecha de entrega. Cuenta desde el día de entrega.
-        data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
+        // Si la fecha de entrega ya pasó (anterior a hoy), no aplica garantía
+        const today0 = new Date(); today0.setHours(0,0,0,0);
+        const dueBeforeToday = data.dueDate && data.dueDate < today0.getTime();
+        data.warrantyDays = (!dueBeforeToday && wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
         data.devicePhotos = photos.device;
         data.devicePhoto = photos.device[0] || null;
         data.clientPhoto = photos.client;
@@ -954,17 +952,8 @@ const Views = (() => {
     const cp = document.getElementById('detailClientPhoto');
     if(cp) cp.onclick = ()=> UI.openImageViewer(r.clientPhoto);
 
-    document.getElementById('quickStatus').addEventListener('change', async e=>{
-      const newSt = e.target.value;
-      if(newSt==='cancelled' && r.status==='delivered'){
-        const ok = await UI.confirmDialog({
-          title:'Atención',
-          message:'Esta reparación ya está ENTREGADA. ¿Seguro que quieres marcarla como CANCELADA?',
-          okText:'Sí, cancelar', cancelText:'No, volver', danger:true
-        });
-        if(!ok){ e.target.value = r.status; return; }
-      }
-      DB.updateRepair(id, { status: newSt });
+    document.getElementById('quickStatus').addEventListener('change', e=>{
+      DB.updateRepair(id, { status: e.target.value });
       UI.toast('Estado actualizado'); UI.closeModal(); App.refresh();
     });
     document.getElementById('editBtn').onclick = ()=>{ UI.closeModal(); App.go('new', null, r); };
@@ -1954,31 +1943,12 @@ const Views = (() => {
     const items = Object.values(stockStats);
     const totalStockUnits = items.reduce((a,i)=> a + Math.max(0,i.stock), 0);
 
-    const _all = computeAllStats().total;
-    const _gainSales = _all.salesIncome - _all.salesCost;
-    const _gainPurch = -_all.purchases; // las compras son inversión (no son ganancia)
-    const _netCls = _all.totalProfit>=0 ? '' : 'neg';
-    const _heroHtml = `
-      <div class="cv-hero ${_netCls}">
-        <div class="cvh-row"><span class="lbl">Ventas (entró)</span><span class="val">${fmtMoney(_all.salesIncome)}</span></div>
-        <div class="cvh-row"><span class="lbl">Costo de mercancía vendida</span><span class="val neg">${fmtMoney(_all.salesCost)}</span></div>
-        <div class="cvh-row"><span class="lbl">Ganancia de ventas (con inversión)</span><span class="val ${_gainSales>=0?'pos':'neg'}">${fmtMoney(_gainSales)}</span></div>
-        <div class="cvh-row"><span class="lbl">Ingreso bruto de ventas (sin restar inversión)</span><span class="val pos">${fmtMoney(_all.salesIncome)}</span></div>
-        <div class="cvh-row"><span class="lbl">Compras stock (inversión)</span><span class="val neg">${fmtMoney(_all.purchases)}</span></div>
-        <div class="cvh-row"><span class="lbl">Servicios cobrados − piezas</span><span class="val ${_all.repairProfit>=0?'pos':'neg'}">${fmtMoney(_all.repairProfit)}</span></div>
-        <div class="cvh-big">
-          <span class="lbl">Ganancia neta total</span>
-          <span class="val ${_all.totalProfit>=0?'pos':'neg'}">${fmtMoney(_all.totalProfit)}</span>
-        </div>
-      </div>`;
     view().innerHTML = `
       <div class="greeting">Compras y <span>Ventas</span></div>
-      <p class="muted small" style="margin:-8px 4px 10px">
+      <p class="muted small" style="margin:-8px 4px 14px">
         Gestiona aquí tus compras de stock y tus ventas. Cada compra suma piezas a tu inventario;
         cada venta o pieza usada en una reparación las descuenta automáticamente.
       </p>
-      ${_heroHtml}
-
 
       <div class="acc-card ${lowList.length?'open':''}">
         <button class="acc-head" data-acc type="button">
