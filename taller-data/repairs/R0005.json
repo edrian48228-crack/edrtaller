@@ -1,7 +1,7 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1781430464289,
+  "savedAt": 1781438896128,
   "repair": {
     "clientName": "Antonio Caballero",
     "clientPhone": "55824943",
@@ -40,6 +40,7 @@
     "clientAddress": null,
     "clientIdNumber": null,
     "warrantyDays": 10,
-    "deliveredAt": 1781175001651
+    "deliveredAt": 1781175001651,
+    "parts": []
   }
 }
