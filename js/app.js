@@ -127,6 +127,10 @@ const App = (() => {
     setTimeout(()=>{ if(window.Views && Views.autoAuditOnLoad) Views.autoAuditOnLoad(); }, 600);
   }
   function go(v, arg, extra){
+    // Si salimos del formulario "nuevo/editar", limpiar la guardia de back-navigation
+    if(current === 'new' && v !== 'new'){
+      try{ if(window.__formGuardCleanup) window.__formGuardCleanup(); }catch(_){}
+    }
     current = v; currentArg = arg;
     document.querySelectorAll('.tab').forEach(t=>{
       t.classList.toggle('active', t.dataset.view === v);

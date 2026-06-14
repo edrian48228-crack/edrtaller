@@ -247,7 +247,16 @@ const Views = (() => {
 
     const opts = FILTERS.map(f=>`<option value="${f.k}" ${f.k===active?'selected':''}>${f.label}</option>`).join('');
 
+    const totalAll = DB.repairs.length;
+    const banner = `<div class="repairs-total-banner">
+      <span>Reparaciones totales <b>${totalAll}</b></span>
+      <span class="rtb-mini">
+        <span>Mostradas<b>${list.length}</b></span>
+        <span>Filtro<b>${escape((FILTERS.find(f=>f.k===active)||{label:'Todas'}).label)}</b></span>
+      </span>
+    </div>`;
     view().innerHTML = `
+      ${banner}
       <div class="filter-bar">
         <div class="select-elegant">
           <select id="repairsFilter" aria-label="Filtrar reparaciones">${opts}</select>
@@ -281,6 +290,46 @@ const Views = (() => {
 
   function newRepair(existing){
     const r = existing || {};
+    // === Guardar progreso ante "atrás" del navegador / Android ===
+    // Empuja un estado falso para capturar la primera "atrás" y preguntar.
+    try{
+      if(!window.__formGuardActive){
+        window.__formGuardActive = true;
+        history.pushState({ formGuard:true, at: Date.now() }, '');
+        const handler = async (ev)=>{
+          if(window.__formGuardActive){
+            window.__formGuardActive = false;
+            window.removeEventListener('popstate', handler);
+            window.removeEventListener('beforeunload', beforeUnload);
+            const ok = await UI.confirmDialog({
+              title:'¿Salir sin guardar?',
+              message:'Tienes una reparación a medio capturar. Si sales perderás los datos no guardados. ¿Seguro que quieres salir?',
+              okText:'Sí, salir', cancelText:'Seguir editando', danger:true
+            });
+            if(ok){
+              App.go(existing ? 'repairs' : 'dashboard');
+            } else {
+              // Re-empujar estado para mantener el guardia
+              window.__formGuardActive = true;
+              history.pushState({ formGuard:true, at: Date.now() }, '');
+              window.addEventListener('popstate', handler);
+              window.addEventListener('beforeunload', beforeUnload);
+            }
+          }
+        };
+        const beforeUnload = (e)=>{ e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('popstate', handler);
+        window.addEventListener('beforeunload', beforeUnload);
+        // Limpieza cuando el form se submitee o cierre limpiamente
+        window.__formGuardCleanup = ()=>{
+          window.__formGuardActive = false;
+          window.removeEventListener('popstate', handler);
+          window.removeEventListener('beforeunload', beforeUnload);
+          try{ if(history.state && history.state.formGuard) history.back(); }catch(_){}
+        };
+      }
+    }catch(e){ console.warn('form guard fail', e); }
+
     const photos = { device: (r.devicePhotos||[]).slice(), client: r.clientPhoto || null };
     let acceptAudio = r.acceptAudio || null;
     const naFields = (r.naFields||[]).slice();
@@ -408,8 +457,15 @@ const Views = (() => {
     `;
 
     // Cerrar (arriba)
-    document.getElementById('formCloseTop').onclick = ()=>{
+    document.getElementById('formCloseTop').onclick = async ()=>{
+      const ok = await UI.confirmDialog({
+        title:'¿Salir sin guardar?',
+        message:'Si sales ahora se perderán los datos no guardados.',
+        okText:'Sí, salir', cancelText:'Seguir editando', danger:true
+      });
+      if(!ok) return;
       try{ if(rec) rec.cancel(); }catch(e){}
+      try{ if(window.__formGuardCleanup) window.__formGuardCleanup(); }catch(_){}
       App.go(existing ? 'repairs' : 'dashboard');
     };
     // Cancelar reparación (abajo)
@@ -423,8 +479,10 @@ const Views = (() => {
       });
       if(!ok) return;
       try{ if(rec) rec.cancel(); }catch(e){}
+      try{ if(window.__formGuardCleanup) window.__formGuardCleanup(); }catch(_){}
       if(existing){
         DB.updateRepair(existing.id, { status: 'cancelled' });
+        try{ if(window.__formGuardCleanup) window.__formGuardCleanup(); }catch(_){}
         UI.toast('Reparación cancelada');
         App.go('repairs');
       } else {
@@ -729,22 +787,9 @@ const Views = (() => {
       const wEl = document.getElementById('warrantyDaysInput');
       const hint = document.getElementById('warrantyHint');
       if(!dueEl || !wEl || !hint) return;
-      const val = dueEl.value;
-      if(val){
-        const t0 = new Date(); t0.setHours(0,0,0,0);
-        const due = new Date(val+'T12:00:00').getTime();
-        if(due < t0.getTime()){
-          wEl.value = '';
-          wEl.disabled = true;
-          wEl.placeholder = 'Sin garantía';
-          hint.innerHTML = '<b>Sin garantía:</b> la fecha de entrega ya pasó, no se aplica garantía.';
-          hint.style.color = '#ff9b8b';
-          return;
-        }
-      }
       wEl.disabled = false;
       wEl.placeholder = 'Ej: 30';
-      hint.innerHTML = 'La garantía comienza el día que marques el equipo como <b>Entregado</b>.';
+      hint.innerHTML = 'La garantía comienza el día que marques el equipo como <b>Entregado</b>, sin importar la fecha de entrega prevista.';
       hint.style.color = '';
     }
     const dueEl = document.getElementById('dueDateInput');
@@ -810,10 +855,7 @@ const Views = (() => {
         data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
         data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
         const wd = fd.get('warrantyDays');
-        // Si la fecha de entrega ya pasó (anterior a hoy), no aplica garantía
-        const today0 = new Date(); today0.setHours(0,0,0,0);
-        const dueBeforeToday = data.dueDate && data.dueDate < today0.getTime();
-        data.warrantyDays = (!dueBeforeToday && wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
+        data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
         data.devicePhotos = photos.device;
         data.devicePhoto = photos.device[0] || null;
         data.clientPhoto = photos.client;
@@ -840,6 +882,7 @@ const Views = (() => {
           const nr = DB.addRepair(data);
           UI.toast('Reparación registrada: '+nr.id);
         }
+        try{ if(window.__formGuardCleanup) window.__formGuardCleanup(); }catch(_){}
         App.go('repairs');
       };
       if(rec && rec.isRecording()){
@@ -902,14 +945,16 @@ const Views = (() => {
       ${(()=>{ 
         if(!r.warrantyDays) return '<div class="detail-row"><span class="lbl">Garantía</span><span class="val"><span class="muted">—</span></span></div>';
         if(r.status !== 'delivered' || !r.deliveredAt){
-          return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} días (empieza al entregar)</span></div>`;
+          return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} día(s) (empieza al marcar como entregado)</span></div>`;
         }
         const endTs = r.deliveredAt + r.warrantyDays*86400000;
-        const remaining = Math.ceil((endTs - Date.now())/86400000);
+        const remainingMs = endTs - Date.now();
+        const remaining = Math.ceil(remainingMs/86400000);
+        const elapsed = Math.max(0, Math.floor((Date.now() - r.deliveredAt)/86400000));
         const status = remaining>0
-          ? `<span class="warranty-tag active">Vigente · ${remaining} día(s)</span>`
-          : `<span class="warranty-tag expired">Vencida</span>`;
-        return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} días · hasta ${fmtDate(endTs)} ${status}</span></div>`;
+          ? `<span class="warranty-tag active">Vigente · ${remaining} día(s) restantes</span>`
+          : `<span class="warranty-tag expired">Vencida hace ${Math.abs(remaining)} día(s)</span>`;
+        return `<div class="detail-row"><span class="lbl">Garantía</span><span class="val">${r.warrantyDays} día(s) · entregada el ${fmtDate(r.deliveredAt)} · transcurridos ${elapsed} · hasta ${fmtDate(endTs)}<br>${status}</span></div>`;
       })()}
 
       ${(()=>{
@@ -1944,12 +1989,21 @@ const Views = (() => {
     const items = Object.values(stockStats);
     const totalStockUnits = items.reduce((a,i)=> a + Math.max(0,i.stock), 0);
 
+    const _cv = computeAllStats().total;
+    const _profitCls = _cv.salesProfit>=0 ? 'pos' : 'neg';
+    const _qs = `<div class="cv-quick-stats">
+      <div class="qs sale"><span class="qs-l">Ventas (entró)</span><span class="qs-v">$ ${_cv.salesIncome.toFixed(2)}</span><span class="qs-sub">${_cv.countSales} venta(s) — sin restar inversión</span></div>
+      <div class="qs ${_profitCls}"><span class="qs-l">Ganancia ventas</span><span class="qs-v">$ ${_cv.salesProfit.toFixed(2)}</span><span class="qs-sub">Ventas − costo mercancía</span></div>
+      <div class="qs buy"><span class="qs-l">Compras (gasto)</span><span class="qs-v">$ ${_cv.purchases.toFixed(2)}</span><span class="qs-sub">${_cv.countPurchases} compra(s) — inversión en stock</span></div>
+      <div class="qs"><span class="qs-l">Inversión vendida</span><span class="qs-v">$ ${_cv.salesCost.toFixed(2)}</span><span class="qs-sub">Costo de la mercancía ya vendida</span></div>
+    </div>`;
     view().innerHTML = `
       <div class="greeting">Compras y <span>Ventas</span></div>
-      <p class="muted small" style="margin:-8px 4px 14px">
+      <p class="muted small" style="margin:-8px 4px 10px">
         Gestiona aquí tus compras de stock y tus ventas. Cada compra suma piezas a tu inventario;
         cada venta o pieza usada en una reparación las descuenta automáticamente.
       </p>
+      ${_qs}
 
       <div class="acc-card ${lowList.length?'open':''}">
         <button class="acc-head" data-acc type="button">
