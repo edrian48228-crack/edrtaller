@@ -1402,8 +1402,12 @@ const Views = (() => {
         </div>
       </div>
 
-      <div class="admin-card audit-card" id="adm-glossary">
-        <h3>Glosario del Resumen</h3>
+      <details class="admin-card audit-card collapsible-card" id="adm-glossary">
+        <summary>
+          <span class="adm-collapse-title"><span class="adm-collapse-ico">${ICONS.search}</span> Glosario del Resumen</span>
+          <span class="adm-collapse-chev" aria-hidden="true">▾</span>
+        </summary>
+        <div class="adm-collapse-body">
         <p>Significado de cada término que aparece en la sección <b>Resumen</b>. Explicado fácil para que sepas qué mide cada cifra.</p>
         <div class="audit-legend">
           <div class="legend-block">
@@ -1426,11 +1430,16 @@ const Views = (() => {
             <p><b>Regla simple:</b> <i>Ganancia = lo que entró − lo que costó</i>. Las <b>compras de stock</b> son inversión, no gasto.</p>
           </div>
         </div>
-      </div>
+        </div>
+      </details>
 
 
-      <div class="admin-card audit-card" id="adm-audit">
-        <h3>Auditoría del sistema</h3>
+      <details class="admin-card audit-card collapsible-card" id="adm-audit">
+        <summary>
+          <span class="adm-collapse-title"><span class="adm-collapse-ico">${ICONS.cloud}</span> Auditoría del sistema</span>
+          <span class="adm-collapse-chev" aria-hidden="true">▾</span>
+        </summary>
+        <div class="adm-collapse-body">
         <p>Recalcula <b>todo</b> el sistema desde cero: compras, ventas, reparaciones, piezas y stock — y te avisa si algo no cuadra. Se ejecuta también automáticamente cada vez que entras.</p>
         <button class="btn-primary btn-audit" id="runAuditBtn" type="button">
           <span class="audit-ico">${ICONS.check}</span>
@@ -1478,7 +1487,8 @@ const Views = (() => {
             <p><b>Regla simple:</b> lo que escribes en <b>Compra/Venta</b> y en <b>Reparaciones</b> alimenta automáticamente lo que ves en <b>Resumen</b>. Por eso el Resumen siempre cuadra solo si los movimientos están bien registrados — y para eso sirve este botón de auditoría.</p>
           </div>
         </div>
-      </div>
+        </div>
+      </details>
     `;
 
     // Menú elegante: scroll suave a cada sección
@@ -1486,6 +1496,7 @@ const Views = (() => {
       b.onclick = ()=>{
         const el = document.getElementById(b.dataset.jump);
         if(!el) return;
+        if(el.tagName === 'DETAILS') el.open = true;
         el.scrollIntoView({behavior:'smooth', block:'start'});
         el.classList.add('flash');
         setTimeout(()=>el.classList.remove('flash'), 1500);
@@ -1710,13 +1721,45 @@ const Views = (() => {
     document.getElementById('importBtn').onclick = ()=> document.getElementById('importFile').click();
     document.getElementById('importFile').onchange = e=>{
       const f = e.target.files[0]; if(!f) return;
-      if(!confirm('Esto reemplazará todos los datos. ¿Continuar?')) return;
       const reader = new FileReader();
       reader.onload = ev=>{
-        if(DB.importJson(ev.target.result)){ UI.toast('Importado'); App.refresh(); }
-        else UI.toast('Archivo inválido');
+        const text = ev.target.result;
+        // Diálogo: reemplazar o añadir al existente
+        const wrap = document.createElement('div');
+        wrap.className = 'confirm-overlay';
+        wrap.innerHTML = `
+          <div class="confirm-card" role="dialog" aria-modal="true">
+            <h3>Importar JSON</h3>
+            <p>¿Cómo deseas cargar este archivo?<br><b>Reemplazar</b> borra los datos actuales y deja solo los del archivo. <b>Añadir</b> conserva tus datos y suma los nuevos (sin duplicar por id).</p>
+            <div class="btn-row" style="flex-wrap:wrap;gap:8px">
+              <button class="btn-secondary" data-act="cancel">Cancelar</button>
+              <button class="btn-secondary" data-act="merge">Añadir al existente</button>
+              <button class="btn-primary btn-cancel" data-act="replace">Reemplazar todo</button>
+            </div>
+          </div>`;
+        document.body.appendChild(wrap);
+        const close = ()=> wrap.remove();
+        wrap.addEventListener('click', ev2=>{
+          if(ev2.target===wrap){ close(); return; }
+          const act = ev2.target.closest('[data-act]')?.dataset.act;
+          if(!act) return;
+          if(act==='cancel'){ close(); return; }
+          if(act==='replace'){
+            if(DB.importJson(text)){ UI.toast('Datos reemplazados'); App.refresh(); }
+            else UI.toast('Archivo inválido');
+          } else if(act==='merge'){
+            const res = DB.mergeJson(text);
+            if(res && res.ok){
+              UI.toast(`Añadido: +${res.added.repairs} rep · +${res.added.transactions} mov`);
+              App.refresh();
+            } else UI.toast('Archivo inválido');
+          }
+          close();
+        });
       };
       reader.readAsText(f);
+      // Permite reimportar el mismo archivo
+      e.target.value = '';
     };
 
     document.getElementById('addDeviceBtn').onclick = ()=>{

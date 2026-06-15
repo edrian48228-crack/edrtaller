@@ -1406,3 +1406,36 @@ html,body{max-width:100%;overflow-x:hidden}
   background:rgba(232,196,106,.08);border-color:rgba(232,196,106,.35);
 }
 .audit-legend .legend-note p{font-size:13px}
+
+/* === Tarjetas de administración colapsables (Glosario / Auditoría) === */
+.collapsible-card{padding:0;overflow:hidden}
+.collapsible-card>summary{
+  list-style:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:16px 18px;
+  font-weight:600;color:var(--text);
+  user-select:none;
+  transition:background .2s ease;
+}
+.collapsible-card>summary::-webkit-details-marker{display:none}
+.collapsible-card>summary:hover{background:rgba(255,255,255,.03)}
+.collapsible-card .adm-collapse-title{
+  display:inline-flex;align-items:center;gap:10px;font-size:15px;
+}
+.collapsible-card .adm-collapse-ico{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:8px;
+  background:rgba(255,179,122,.12);color:#ffb37a;
+}
+.collapsible-card .adm-collapse-ico svg{width:16px;height:16px}
+.collapsible-card .adm-collapse-chev{
+  font-size:14px;color:var(--muted);
+  transition:transform .25s ease;
+}
+.collapsible-card[open]>summary .adm-collapse-chev{transform:rotate(180deg)}
+.collapsible-card .adm-collapse-body{
+  padding:0 18px 18px;
+  border-top:1px solid var(--border);
+  padding-top:14px;
+}
+.collapsible-card[open]>summary{background:rgba(255,255,255,.025)}
