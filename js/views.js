@@ -26,7 +26,7 @@ const Views = (() => {
     print: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8v5zm3-7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12V3z"/></svg>'
   };
 
-  const STATUS_KEYS = ['pending','in_progress','completed','delivered'];
+  const STATUS_KEYS = ['pending','in_progress','completed','delivered','cancelled'];
   const FILTERS = [
     {k:'all',label:'Todas'},
     {k:'pending',label:'Pendientes'},
@@ -980,7 +980,7 @@ const Views = (() => {
       <div class="section-title">Cambiar estado</div>
       <div class="select-elegant">
         <select id="quickStatus">
-          ${['pending','in_progress','completed','delivered'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
+          ${['pending','in_progress','completed','delivered','cancelled'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
         </select>
       </div>
       <div class="btn-row three">
@@ -997,9 +997,19 @@ const Views = (() => {
     const cp = document.getElementById('detailClientPhoto');
     if(cp) cp.onclick = ()=> UI.openImageViewer(r.clientPhoto);
 
-    document.getElementById('quickStatus').addEventListener('change', e=>{
-      DB.updateRepair(id, { status: e.target.value });
-      UI.toast('Estado actualizado'); UI.closeModal(); App.refresh();
+    document.getElementById('quickStatus').addEventListener('change', async e=>{
+      const newStatus = e.target.value;
+      if(newStatus === 'cancelled' && r.status !== 'cancelled'){
+        const ok = await UI.confirmDialog({
+          title:'Cancelar reparación',
+          message:'¿Marcar esta reparación como cancelada?',
+          okText:'Sí, cancelar', cancelText:'Volver', danger:true
+        });
+        if(!ok){ e.target.value = r.status; return; }
+      }
+      DB.updateRepair(id, { status: newStatus });
+      UI.toast(newStatus==='cancelled' ? 'Reparación cancelada' : 'Estado actualizado');
+      UI.closeModal(); App.refresh();
     });
     document.getElementById('editBtn').onclick = ()=>{ UI.closeModal(); App.go('new', null, r); };
     document.getElementById('ticketBtn').onclick = ()=>{ showLabel(r); };
@@ -1203,6 +1213,7 @@ const Views = (() => {
       {id:'adm-products',t:'Productos',       s:'Piezas y artículos',     i:ICONS.box},
       {id:'adm-warranty',t:'Garantía',        s:'Días por defecto',       i:ICONS.check},
       {id:'adm-stats',   t:'Estadísticas',    s:'Ganancia · inversión',   i:ICONS.edit},
+      {id:'adm-glossary',t:'Glosario',        s:'Términos del Resumen',   i:ICONS.search},
       {id:'adm-audit',   t:'Auditoría',       s:'Comprobar todo',         i:ICONS.cloud}
     ];
     const menuHtml = `
@@ -1390,6 +1401,33 @@ const Views = (() => {
           <button class="btn-secondary" id="goStatsBtn">Ir a Compra/Venta</button>
         </div>
       </div>
+
+      <div class="admin-card audit-card" id="adm-glossary">
+        <h3>Glosario del Resumen</h3>
+        <p>Significado de cada término que aparece en la sección <b>Resumen</b>. Explicado fácil para que sepas qué mide cada cifra.</p>
+        <div class="audit-legend">
+          <div class="legend-block">
+            <span class="legend-tag tag-sum">📊 Términos</span>
+            <ul>
+              <li><b>Ganancia neta</b>: el dinero que de verdad te quedó después de restar todo lo que te costó. Fórmula: <i>(ventas + servicios) − (costo mercancía + piezas usadas)</i>.</li>
+              <li><b>Ganancia total acumulada</b>: la ganancia neta sumada desde el primer día hasta hoy.</li>
+              <li><b>Ingresos</b>: todo el dinero que entró (ventas + servicios cobrados). Aún no resta los costos.</li>
+              <li><b>Ventas</b>: dinero que recibiste vendiendo productos del inventario.</li>
+              <li><b>Servicios</b>: dinero cobrado por reparaciones <b>entregadas</b>. Las que están pendientes no cuentan aquí.</li>
+              <li><b>Costo de mercancía</b>: lo que tú pagaste por los productos que ya vendiste. Solo se descuenta cuando la venta se hace.</li>
+              <li><b>Piezas usadas</b>: lo que costaron las piezas puestas en reparaciones entregadas.</li>
+              <li><b>Costos</b>: la suma del costo de mercancía + piezas usadas. Es todo lo que “te costó” generar tus ingresos.</li>
+              <li><b>Compras stock</b>: dinero que invertiste comprando piezas o productos. <i>No</i> resta ganancia hasta que los uses o vendas — es inversión.</li>
+              <li><b>Movimientos</b>: cantidad de operaciones registradas (ventas, compras y reparaciones) en el periodo.</li>
+              <li><b>Pendiente de cobrar</b>: reparaciones terminadas pero aún no entregadas; ese dinero todavía no entró.</li>
+            </ul>
+          </div>
+          <div class="legend-block legend-note">
+            <p><b>Regla simple:</b> <i>Ganancia = lo que entró − lo que costó</i>. Las <b>compras de stock</b> son inversión, no gasto.</p>
+          </div>
+        </div>
+      </div>
+
 
       <div class="admin-card audit-card" id="adm-audit">
         <h3>Auditoría del sistema</h3>

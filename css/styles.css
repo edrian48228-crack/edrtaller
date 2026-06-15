@@ -94,25 +94,26 @@ input,select,textarea{font-family:inherit;font-size:16px;max-width:100%}
 .brand-name{margin:0;font-size:20px;font-weight:800;letter-spacing:.3px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .creator-row{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
-  padding-left:0; /* pegado a la izquierda como pidió el usuario */
+  padding-left:0;
   margin-top:2px;font-size:11px;color:var(--muted);
-  flex-wrap:wrap
+  flex-wrap:nowrap;min-width:0
 }
-.creator-left{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden}
+.creator-left{display:flex;align-items:center;gap:5px;min-width:0;overflow:hidden;flex:1 1 auto}
 .creator-left b{color:var(--primary-glow);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 0 8px rgba(155,42,42,.35)}
-.creator-right{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.creator-right{display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;margin-left:auto}
 .creator-chip{
-  display:inline-flex;align-items:center;gap:4px;
-  padding:3px 8px;border-radius:999px;
-  background:var(--surface-2);border:1px solid var(--border);
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  padding:0;width:30px;height:30px;border-radius:8px;
+  background:transparent;border:0;
   color:#e0d5b5;text-decoration:none;font-size:11px;font-weight:600
 }
-.creator-chip svg{width:12px;height:12px}
-.creator-chip.wa{color:#a8e3b3;border-color:rgba(76,201,115,.35)}
-.creator-chip.tel{color:#e8c46a;border-color:rgba(232,196,106,.35)}
-.creator-chip.sms{color:#8bb5ff;border-color:rgba(108,160,255,.35)}
-.creator-chip.icon-only{padding:0;width:34px;height:28px;justify-content:center;gap:0;border-radius:9px}
-.creator-chip.icon-only svg{width:20px;height:20px}
+.creator-chip svg{width:18px;height:18px}
+.creator-chip.wa{color:#a8e3b3}
+.creator-chip.tel{color:#e8c46a}
+.creator-chip.sms{color:#8bb5ff}
+.creator-chip.icon-only{padding:0;width:30px;height:30px;justify-content:center;gap:0;border-radius:8px;background:transparent;border:0}
+.creator-chip.icon-only svg{width:18px;height:18px}
+
 
 .icon-btn{
   background:transparent;border:0;color:var(--text);padding:8px;border-radius:10px;cursor:pointer;flex-shrink:0
