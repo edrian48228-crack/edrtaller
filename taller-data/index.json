@@ -1,7 +1,7 @@
 {
   "kind": "index",
   "schema": 1,
-  "savedAt": 1781438921861,
+  "savedAt": 1781519175177,
   "schemaVersion": 9,
   "counter": 13,
   "txCounter": 8,
@@ -11,7 +11,12 @@
     "logoPreset": "shield",
     "requirePassword": false,
     "passwordHash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
-    "securityQuestions": [],
+    "securityQuestions": [
+      {
+        "q": "¿Nombre de tu primera mascota?",
+        "aHash": "9db3a25b009c1e439aa688ba0eb3b9f2999d891e1d8849f3e500f233cc0705e4"
+      }
+    ],
     "deviceTypes": [
       "Televisor",
       "Smart TV",
@@ -93,8 +98,8 @@
       "path": "taller-data.json",
       "token": "",
       "autoSync": true,
-      "lastSyncAt": 1781430486415,
-      "lastSha": "5f473f9e2d3f5012986c1f01c366be3a1c3b5cd4"
+      "lastSyncAt": 1781438923102,
+      "lastSha": "74573e97ea3a1a6ff82916b1c99ea70e81151562"
     }
   },
   "transactions": [
