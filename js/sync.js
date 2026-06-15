@@ -507,14 +507,19 @@ const LocalFile = (() => {
     clearTimeout(writeTimer);
     writeTimer = setTimeout(()=>{ write(); }, 800);
   }
-  async function loadFromFile(){
-    if(!cachedHandle) return false;
-    if(!(await ensurePermission(cachedHandle))) return false;
+  async function readText(){
+    if(!cachedHandle) return null;
+    if(!(await ensurePermission(cachedHandle))) return null;
     const f = await cachedHandle.getFile();
-    const text = await f.text();
+    return await f.text();
+  }
+  async function loadFromFile(){
+    const text = await readText();
+    if(text==null) return false;
     return DB.importJson(text);
   }
   loadHandle();
-  return { isSupported, hasHandle, pickLocation, clearHandle, write, scheduleWrite, loadFromFile, loadHandle };
+  return { isSupported, hasHandle, pickLocation, clearHandle, write, scheduleWrite, loadFromFile, readText, loadHandle };
+
 })();
 window.LocalFile = LocalFile;

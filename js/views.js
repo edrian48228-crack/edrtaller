@@ -1711,10 +1711,47 @@ const Views = (() => {
       if(clr) clr.onclick = async ()=>{ await LocalFile.clearHandle(); UI.toast('Ubicación quitada'); App.refresh(); };
       const lf = document.getElementById('loadFromLoc');
       if(lf) lf.onclick = async ()=>{
-        if(!confirm('Reemplazar datos locales con los del archivo elegido?')) return;
-        try{ const ok = await LocalFile.loadFromFile(); UI.toast(ok?'Cargado':'No se pudo cargar'); App.refresh(); }
+        try{
+          const text = await LocalFile.readText();
+          if(text==null){ UI.toast('No se pudo leer'); return; }
+          askImportMode(text);
+        }
         catch(e){ UI.toast('Error: '+e.message); }
       };
+    }
+
+    function askImportMode(text){
+      const wrap = document.createElement('div');
+      wrap.className = 'confirm-overlay';
+      wrap.innerHTML = `
+        <div class="confirm-card" role="dialog" aria-modal="true">
+          <h3>Importar JSON</h3>
+          <p>¿Cómo deseas cargar este archivo?<br><b>Reemplazar</b> borra los datos actuales y deja solo los del archivo. <b>Añadir</b> conserva tus datos y suma los nuevos (sin duplicar por id).</p>
+          <div class="btn-row" style="flex-wrap:wrap;gap:8px">
+            <button class="btn-secondary" data-act="cancel">Cancelar</button>
+            <button class="btn-secondary" data-act="merge">Añadir al existente</button>
+            <button class="btn-primary btn-cancel" data-act="replace">Reemplazar todo</button>
+          </div>
+        </div>`;
+      document.body.appendChild(wrap);
+      const close = ()=> wrap.remove();
+      wrap.addEventListener('click', ev2=>{
+        if(ev2.target===wrap){ close(); return; }
+        const act = ev2.target.closest('[data-act]')?.dataset.act;
+        if(!act) return;
+        if(act==='cancel'){ close(); return; }
+        if(act==='replace'){
+          if(DB.importJson(text)){ UI.toast('Datos reemplazados'); App.refresh(); }
+          else UI.toast('Archivo inválido');
+        } else if(act==='merge'){
+          const res = DB.mergeJson(text);
+          if(res && res.ok){
+            UI.toast(`Añadido: +${res.added.repairs} rep · +${res.added.transactions} mov`);
+            App.refresh();
+          } else UI.toast('Archivo inválido');
+        }
+        close();
+      });
     }
 
     document.getElementById('exportBtn').onclick = ()=>{ DB.exportJson(); UI.toast('Descargado'); };
@@ -1722,45 +1759,12 @@ const Views = (() => {
     document.getElementById('importFile').onchange = e=>{
       const f = e.target.files[0]; if(!f) return;
       const reader = new FileReader();
-      reader.onload = ev=>{
-        const text = ev.target.result;
-        // Diálogo: reemplazar o añadir al existente
-        const wrap = document.createElement('div');
-        wrap.className = 'confirm-overlay';
-        wrap.innerHTML = `
-          <div class="confirm-card" role="dialog" aria-modal="true">
-            <h3>Importar JSON</h3>
-            <p>¿Cómo deseas cargar este archivo?<br><b>Reemplazar</b> borra los datos actuales y deja solo los del archivo. <b>Añadir</b> conserva tus datos y suma los nuevos (sin duplicar por id).</p>
-            <div class="btn-row" style="flex-wrap:wrap;gap:8px">
-              <button class="btn-secondary" data-act="cancel">Cancelar</button>
-              <button class="btn-secondary" data-act="merge">Añadir al existente</button>
-              <button class="btn-primary btn-cancel" data-act="replace">Reemplazar todo</button>
-            </div>
-          </div>`;
-        document.body.appendChild(wrap);
-        const close = ()=> wrap.remove();
-        wrap.addEventListener('click', ev2=>{
-          if(ev2.target===wrap){ close(); return; }
-          const act = ev2.target.closest('[data-act]')?.dataset.act;
-          if(!act) return;
-          if(act==='cancel'){ close(); return; }
-          if(act==='replace'){
-            if(DB.importJson(text)){ UI.toast('Datos reemplazados'); App.refresh(); }
-            else UI.toast('Archivo inválido');
-          } else if(act==='merge'){
-            const res = DB.mergeJson(text);
-            if(res && res.ok){
-              UI.toast(`Añadido: +${res.added.repairs} rep · +${res.added.transactions} mov`);
-              App.refresh();
-            } else UI.toast('Archivo inválido');
-          }
-          close();
-        });
-      };
+      reader.onload = ev=> askImportMode(ev.target.result);
       reader.readAsText(f);
       // Permite reimportar el mismo archivo
       e.target.value = '';
     };
+
 
     document.getElementById('addDeviceBtn').onclick = ()=>{
       const v = document.getElementById('newDeviceType').value;
