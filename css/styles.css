@@ -1346,3 +1346,62 @@ html,body{max-width:100%;overflow-x:hidden}
   .mb-year-meta{grid-column:1/-1; order:3}
   .mb-year-chev{order:2}
 }
+
+/* ===== v24: toast 1 línea, fab borde blanco, eye-toggle, audit legend ===== */
+
+/* Toast: forzar una sola línea, no se rompe en dos */
+.toast{
+  white-space:nowrap;
+  max-width:calc(100vw - 24px);
+  overflow:hidden;text-overflow:ellipsis;
+}
+
+/* FAB "+" con borde blanco base sin tapar las pestañas vecinas */
+.tab.fab-tab{
+  box-shadow:
+    0 0 0 3px var(--text),         /* anillo blanco interior */
+    0 0 0 6px var(--bg),            /* corte limpio sobre la barra */
+    0 8px 22px rgba(122,31,31,.55);
+}
+
+/* Campo de contraseña con ojo a la derecha centrado */
+.pwd-wrap{position:relative;display:block;width:100%}
+.pwd-wrap input{width:100%;padding-right:46px}
+.pwd-eye{
+  position:absolute;top:50%;right:8px;transform:translateY(-50%);
+  width:34px;height:34px;display:flex;align-items:center;justify-content:center;
+  background:transparent;border:0;border-radius:8px;cursor:pointer;
+  color:var(--muted);padding:0;
+}
+.pwd-eye:hover{color:var(--text);background:rgba(255,255,255,.06)}
+.pwd-eye .ico{width:20px;height:20px}
+.pwd-eye .eye-off{display:none}
+.pwd-eye.is-visible .eye-on{display:none}
+.pwd-eye.is-visible .eye-off{display:block;color:var(--primary-glow)}
+
+/* Leyenda explicativa en Auditoría */
+.audit-legend{
+  margin-top:16px;padding:14px;border-radius:14px;
+  background:linear-gradient(180deg,rgba(155,42,42,.08),rgba(255,255,255,.02));
+  border:1px solid var(--border);
+}
+.audit-legend h4{margin:0 0 6px;font-size:14px;color:var(--text);font-weight:700;letter-spacing:.2px}
+.audit-legend > p{margin:0 0 10px}
+.audit-legend .legend-block{
+  margin-top:12px;padding:12px;border-radius:12px;
+  background:var(--surface-2);border:1px solid var(--border);
+}
+.audit-legend .legend-block p{margin:6px 0}
+.audit-legend .legend-block ul{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.55}
+.audit-legend .legend-block ul ul{margin:4px 0 4px;padding-left:18px;font-size:12.5px;color:var(--muted)}
+.audit-legend .legend-tag{
+  display:inline-block;padding:4px 10px;border-radius:999px;
+  font-size:11.5px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+  margin-bottom:6px;
+}
+.audit-legend .tag-sum{background:rgba(127,179,255,.12);color:#9fdfff;border:1px solid rgba(127,179,255,.35)}
+.audit-legend .tag-cv{background:rgba(255,179,122,.12);color:#ffb37a;border:1px solid rgba(255,179,122,.35)}
+.audit-legend .legend-note{
+  background:rgba(232,196,106,.08);border-color:rgba(232,196,106,.35);
+}
+.audit-legend .legend-note p{font-size:13px}

@@ -1272,7 +1272,7 @@ const Views = (() => {
         <hr style="border:0;border-top:1px solid var(--border);margin:14px 0">
         <h3>Cambiar contraseña</h3>
         <p>Define una nueva contraseña de acceso</p>
-        <div class="form-group"><input type="password" id="newPass" placeholder="Nueva contraseña"></div>
+        <div class="form-group"><div class="pwd-wrap"><input type="password" id="newPass" placeholder="Nueva contraseña"><button type="button" class="pwd-eye" data-pwd-toggle aria-label="Mostrar contraseña"><svg viewBox="0 0 24 24" class="ico eye-on"><path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><svg viewBox="0 0 24 24" class="ico eye-off"><path d="M2 4.3L3.3 3l18 18-1.3 1.3-3-3A12 12 0 0 1 12 20C5 20 1 13 1 13a17 17 0 0 1 4.4-5.1L2 4.3zM12 8a5 5 0 0 1 5 5c0 .7-.1 1.3-.4 1.9l-2-2A3 3 0 0 0 12 10c-.3 0-.6 0-.9.1l-2-2C9.7 8 10.8 8 12 8zm0-3c7 0 11 7 11 7a17 17 0 0 1-3.2 4l-1.4-1.4A14 14 0 0 0 21 13s-3.5-6-9-6c-.8 0-1.5.1-2.2.3L8.3 5.9C9.5 5.3 10.7 5 12 5z"/></svg></button></div></div>
         <button class="btn-secondary" id="savePassBtn">Actualizar contraseña</button>
       </div>
 
@@ -1299,7 +1299,7 @@ const Views = (() => {
           <div class="form-group"><label>Rama</label><input id="ghBranch" value="${escape(g.branch||'main')}" placeholder="main"></div>
           <div class="form-group"><label>Carpeta base</label><input id="ghPath" value="${escape(g.path||'taller-data')}" placeholder="taller-data"></div>
         </div>
-        <div class="form-group"><label>Token (Fine-grained · Contents: read/write)</label><input id="ghToken" type="password" value="${escape(g.token||'')}" placeholder="github_pat_..."></div>
+        <div class="form-group"><label>Token (Fine-grained · Contents: read/write)</label><div class="pwd-wrap"><input id="ghToken" type="password" value="${escape(g.token||'')}" placeholder="github_pat_..."><button type="button" class="pwd-eye" data-pwd-toggle aria-label="Mostrar token"><svg viewBox="0 0 24 24" class="ico eye-on"><path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><svg viewBox="0 0 24 24" class="ico eye-off"><path d="M2 4.3L3.3 3l18 18-1.3 1.3-3-3A12 12 0 0 1 12 20C5 20 1 13 1 13a17 17 0 0 1 4.4-5.1L2 4.3zM12 8a5 5 0 0 1 5 5c0 .7-.1 1.3-.4 1.9l-2-2A3 3 0 0 0 12 10c-.3 0-.6 0-.9.1l-2-2C9.7 8 10.8 8 12 8zm0-3c7 0 11 7 11 7a17 17 0 0 1-3.2 4l-1.4-1.4A14 14 0 0 0 21 13s-3.5-6-9-6c-.8 0-1.5.1-2.2.3L8.3 5.9C9.5 5.3 10.7 5 12 5z"/></svg></button></div></div>
         <div class="form-group">
           <label class="inline-check"><input type="checkbox" id="ghAuto" ${g.autoSync?'checked':''}> Sincronización automática al guardar</label>
         </div>
@@ -1399,6 +1399,47 @@ const Views = (() => {
           <span>Calcular todo el sistema</span>
         </button>
         <p class="muted small" style="margin-top:10px">Comprueba: cuentas de ventas y compras, ganancia, piezas usadas, stock disponible, reparaciones entregadas sin precio, fechas inválidas y más.</p>
+
+        <div class="audit-legend">
+          <h4>¿Qué significan las secciones <b>Resumen</b> y <b>Compra/Venta</b>?</h4>
+          <p class="muted small">Explicado fácil, como a un niño: el sistema lleva la cuenta del dinero que <b>entra</b> (lo que cobras) y del dinero que <b>sale</b> (lo que pagas), y te dice cuánto ganaste de verdad.</p>
+
+          <div class="legend-block">
+            <span class="legend-tag tag-sum">📊 Resumen</span>
+            <p>Es como el <b>boletín de notas</b> de tu taller. Aquí solo <b>miras</b>, no escribes nada.</p>
+            <ul>
+              <li><b>Ganancia total acumulada</b>: la suma de todo lo que ganaste desde el primer día (ventas + reparaciones − lo que te costó la mercancía y las piezas).</li>
+              <li><b>Contabilidad e ingresos</b>: divide el dinero por periodos (hoy, semana, mes, año y total). En cada uno ves:
+                <ul>
+                  <li><i>Ventas (entró)</i>: dinero que recibiste vendiendo productos.</li>
+                  <li><i>Servicios (entró)</i>: dinero que cobraste por reparaciones <b>entregadas</b>.</li>
+                  <li><i>Costo mercancía</i>: lo que tú pagaste por lo que vendiste.</li>
+                  <li><i>Piezas usadas</i>: lo que costaron las piezas que pusiste en reparaciones.</li>
+                  <li><i>Compras stock</i>: lo que invertiste comprando piezas (no resta ganancia hasta que las vendas o las uses).</li>
+                  <li><i>Movimientos</i>: cuántas ventas, compras y reparaciones hubo.</li>
+                </ul>
+              </li>
+              <li><b>Reparaciones cobradas</b>: solo dinero de reparaciones <b>entregadas</b>. Las que aún no entregaste salen como “pendiente de cobrar”.</li>
+              <li><b>Ganancias por mes y año</b>: una tabla con cada mes mostrando ganancia de reparaciones, ventas con inversión (ingreso − costo) y ventas sin inversión (ingreso completo).</li>
+            </ul>
+          </div>
+
+          <div class="legend-block">
+            <span class="legend-tag tag-cv">🛒 Compra/Venta</span>
+            <p>Es la <b>caja registradora</b> y el <b>almacén</b>. Aquí sí <b>anotas</b> cada movimiento de productos.</p>
+            <ul>
+              <li><b>Nueva venta</b>: registras lo que vendiste (producto, cantidad, precio y, si quieres, cuánto te costó). Esto <b>descuenta</b> piezas del stock y suma el dinero a tus ingresos.</li>
+              <li><b>Nueva compra</b>: registras piezas que compraste para tu inventario. Esto <b>suma</b> piezas al stock y se contabiliza como <i>inversión</i> (no como gasto perdido).</li>
+              <li><b>Total de ventas</b> y <b>Total de compras</b>: dos tarjetas que muestran hoy, semana, mes, año y total. Al tocarlas se abren con la lista detallada de cada movimiento.</li>
+              <li><b>Stock y alertas</b>: cuántas unidades te quedan de cada producto. Si pones un <i>mínimo</i>, te avisa cuando bajas de él.</li>
+              <li><b>Lista de movimientos</b>: el historial completo, ordenado por fecha, con filtro para ver solo ventas, solo compras o todo.</li>
+            </ul>
+          </div>
+
+          <div class="legend-block legend-note">
+            <p><b>Regla simple:</b> lo que escribes en <b>Compra/Venta</b> y en <b>Reparaciones</b> alimenta automáticamente lo que ves en <b>Resumen</b>. Por eso el Resumen siempre cuadra solo si los movimientos están bien registrados — y para eso sirve este botón de auditoría.</p>
+          </div>
+        </div>
       </div>
     `;
 
@@ -2060,31 +2101,31 @@ const Views = (() => {
       </div>
 
 
-      <div class="acc-card cv-stats-card open">
+      <div class="acc-card cv-stats-card">
         <button class="acc-head" data-acc type="button">
           <span class="acc-ico">${ICONS.box}</span>
           <span class="acc-title">Contabilidad e ingresos</span>
-          <span class="acc-sub">Lo que entró, lo que costó y la ganancia neta</span>
+          <span class="acc-sub">Lo que entró, lo que costó y la ganancia neta · toca para abrir o cerrar</span>
           <span class="acc-chev"></span>
         </button>
         <div class="acc-body">${cvStatsTilesHtml()}</div>
       </div>
 
-      <div class="acc-card open">
+      <div class="acc-card">
         <button class="acc-head" data-acc type="button">
           <span class="acc-ico">${ICONS.edit}</span>
           <span class="acc-title">Reparaciones cobradas</span>
-          <span class="acc-sub">Solo cuenta cuando entregas el equipo</span>
+          <span class="acc-sub">Solo cuenta cuando entregas el equipo · toca para abrir o cerrar</span>
           <span class="acc-chev"></span>
         </button>
         <div class="acc-body">${sysStatsTilesHtml()}</div>
       </div>
 
-      <div class="acc-card open">
+      <div class="acc-card">
         <button class="acc-head" data-acc type="button">
           <span class="acc-ico">${ICONS.box}</span>
           <span class="acc-title">Ganancias por mes y año</span>
-          <span class="acc-sub">Reparaciones, ventas con inversión y ventas sin inversión</span>
+          <span class="acc-sub">Reparaciones, ventas con inversión y ventas sin inversión · toca para abrir o cerrar</span>
           <span class="acc-chev"></span>
         </button>
         <div class="acc-body">${monthlyBreakdownHtml()}</div>

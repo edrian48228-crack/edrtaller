@@ -1,5 +1,18 @@
 const UI = (() => {
   const $ = sel => document.querySelector(sel);
+  // Delegación global: ojo para mostrar/ocultar contraseña en cualquier .pwd-wrap
+  document.addEventListener('click', (e)=>{
+    const btn = e.target.closest && e.target.closest('[data-pwd-toggle]');
+    if(!btn) return;
+    e.preventDefault();
+    const wrap = btn.closest('.pwd-wrap');
+    const inp = wrap && wrap.querySelector('input');
+    if(!inp) return;
+    const show = inp.type === 'password';
+    inp.type = show ? 'text' : 'password';
+    btn.classList.toggle('is-visible', show);
+    btn.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+  });
   function toast(msg, ms=2400){
     const t = $('#toast');
     t.textContent = msg;
