@@ -1,7 +1,7 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1781438896120,
+  "savedAt": 1781519149507,
   "repair": {
     "clientName": "Carlos Adonis Alvares",
     "clientAddress": "19 norte entre 4 y 6 oeste. Edif 18. Apto 32C",
@@ -11,7 +11,7 @@
     "model": "Y221-U03",
     "serial": null,
     "issue": "El movil se olle bajito,  la cinta de la botonera esta partida. Poner tornillos",
-    "status": "in_progress",
+    "status": "pending",
     "notes": "El movil no le funcionan los botones de volumen. Bateria media inflada en el medio. No tiene tornillo",
     "clientPhones": [
       "51460231",
@@ -40,7 +40,7 @@
     "parts": [],
     "id": "R0008",
     "createdAt": 1781269079681,
-    "updatedAt": 1781402558653,
+    "updatedAt": 1781476523160,
     "deliveredAt": null
   }
 }
