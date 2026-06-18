@@ -320,12 +320,14 @@ const Views = (() => {
         const beforeUnload = (e)=>{ e.preventDefault(); e.returnValue = ''; };
         window.addEventListener('popstate', handler);
         window.addEventListener('beforeunload', beforeUnload);
-        // Limpieza cuando el form se submitee o cierre limpiamente
+        // Limpieza cuando el form se submitee o cierre limpiamente.
+        // NO llamamos history.back() aquí: si el formulario era la primera
+        // entrada del historial (PWA / pestaña recién abierta), un back()
+        // saca al usuario de la app. La entrada extra del guard es inocua.
         window.__formGuardCleanup = ()=>{
           window.__formGuardActive = false;
           window.removeEventListener('popstate', handler);
           window.removeEventListener('beforeunload', beforeUnload);
-          try{ if(history.state && history.state.formGuard) history.back(); }catch(_){}
         };
       }
     }catch(e){ console.warn('form guard fail', e); }
