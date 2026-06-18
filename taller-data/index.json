@@ -1,9 +1,9 @@
 {
   "kind": "index",
   "schema": 1,
-  "savedAt": 1781519175177,
+  "savedAt": 1781768912441,
   "schemaVersion": 9,
-  "counter": 13,
+  "counter": 14,
   "txCounter": 8,
   "settings": {
     "appName": "RepairPro EDR",
@@ -87,19 +87,19 @@
       "Telefono Huawei Nova 5T": 1
     },
     "creator": {
-      "phone": "",
+      "phone": "12345678",
       "whatsapp": ""
     },
     "github": {
       "enabled": true,
       "user": "edrian48228-crack",
-      "repo": "reparaciones",
+      "repo": "edrtaller",
       "branch": "main",
       "path": "taller-data.json",
       "token": "",
       "autoSync": true,
-      "lastSyncAt": 1781438923102,
-      "lastSha": "74573e97ea3a1a6ff82916b1c99ea70e81151562"
+      "lastSyncAt": 1781519176600,
+      "lastSha": "3cb02865702b9c52403cb4e2bfb8fa27c954e21e"
     }
   },
   "transactions": [
@@ -180,6 +180,7 @@
     }
   ],
   "repairIds": [
+    "R0013",
     "R0012",
     "R0011",
     "R0010",
