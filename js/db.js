@@ -232,6 +232,7 @@ const DB = (() => {
     },
     deleteTransaction(id){
       data.transactions = data.transactions.filter(t=>t.id!==id);
+      try{ window.GitSync && window.GitSync.markDeletedTx && window.GitSync.markDeletedTx(id); }catch(e){}
       save();
     },
     findTransaction(id){ return data.transactions.find(t=>t.id===id); },

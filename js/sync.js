@@ -44,6 +44,11 @@ const GitSync = (() => {
   let busy = false;
   let lastHashes = {}; // id -> hash de su JSON (para detectar cambios)
   let knownDeleted = new Set();
+  // Tombstones de transacciones (las transacciones viven dentro de index.json,
+  // así que necesitamos recordar localmente cuáles borramos para que no
+  // reaparezcan si otro dispositivo sube un index.json antiguo antes que
+  // nosotros podamos subir el nuestro.)
+  let knownDeletedTx = new Set();
 
   // ---------- Configuración ----------
   function g(){ return DB.settings.github; }
@@ -187,14 +192,23 @@ const GitSync = (() => {
   function loadDeleted(){
     try{ knownDeleted = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted')||'[]')); }
     catch(_){ knownDeleted = new Set(); }
+    try{ knownDeletedTx = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted_tx')||'[]')); }
+    catch(_){ knownDeletedTx = new Set(); }
   }
   function saveDeleted(){
     try{ localStorage.setItem('taller_gh_deleted', JSON.stringify([...knownDeleted])); }catch(_){}
+    try{ localStorage.setItem('taller_gh_deleted_tx', JSON.stringify([...knownDeletedTx])); }catch(_){}
   }
   function markDeleted(id){
     knownDeleted.add(id);
     saveDeleted();
     GitLog.info('marca', `Reparación ${id} pendiente de eliminar en GitHub`);
+    schedulePush();
+  }
+  function markDeletedTx(id){
+    knownDeletedTx.add(id);
+    saveDeleted();
+    GitLog.info('marca', `Transacción ${id} pendiente de eliminar en GitHub`);
     schedulePush();
   }
 
@@ -242,8 +256,9 @@ const GitSync = (() => {
     return {
       modified,
       deleted: [...knownDeleted],
+      deletedTx: [...knownDeletedTx],
       indexChanged,
-      total: modified.length + knownDeleted.size + (indexChanged?1:0)
+      total: modified.length + knownDeleted.size + knownDeletedTx.size + (indexChanged?1:0)
     };
   }
 
@@ -384,6 +399,22 @@ const GitSync = (() => {
       DB.updateGithub({ lastSha: idxSha, lastSyncAt: Date.now() });
       tick('index');
 
+      // 4) Tombstones de transacciones: si el index remoto resultante ya no
+      // contiene una transacción borrada, podemos olvidarla con seguridad.
+      // (Las transacciones viven dentro de index.json, así que en el momento
+      // en que subimos un índice sin esos IDs, la eliminación está propagada.)
+      if(knownDeletedTx.size){
+        try{
+          const parsed = JSON.parse(idxTxt);
+          const remainIds = new Set((parsed.transactions||[]).map(t=>t.id));
+          let cleared = 0;
+          for(const id of [...knownDeletedTx]){
+            if(!remainIds.has(id)){ knownDeletedTx.delete(id); cleared++; }
+          }
+          if(cleared){ saveDeleted(); GitLog.info('tx-tomb', `${cleared} tombstone(s) de transacción liberada(s)`); }
+        }catch(_){}
+      }
+
       GitLog.ok('done', `Sincronización completa: ${pending.length} subida(s), ${deletes.length} eliminada(s)`);
       return { pushed: pending.length, deleted: deletes.length };
     } finally {
@@ -469,15 +500,58 @@ const GitSync = (() => {
       GitLog.info('delta', `Descargadas ${fetched} reparación(es) nuevas/cambiadas, ${skipped} omitida(s) sin cambios`);
 
       // 3) Componer dataset final
+      let pulledRepairs = remoteRepairs.map(x=>x.raw);
+      let pulledTx = idxData ? (idxData.transactions || []) : [];
+
+      // --- Protección contra "datos eliminados que reaparecen" ---
+      // Si tenemos tombstones locales (cosas borradas en este dispositivo
+      // pero que el otro dispositivo aún no ha visto), las filtramos del
+      // dataset que vamos a aplicar y dejamos que el siguiente push las
+      // limpie en GitHub. NO borramos los tombstones aquí — eso solo se
+      // hace cuando confirmamos que la eliminación se subió.
+      let filteredOut = 0;
+      if(knownDeleted.size){
+        const before = pulledRepairs.length;
+        pulledRepairs = pulledRepairs.filter(r => !knownDeleted.has(r.id));
+        filteredOut += before - pulledRepairs.length;
+      }
+      if(knownDeletedTx.size){
+        const before = pulledTx.length;
+        pulledTx = pulledTx.filter(t => !knownDeletedTx.has(t.id));
+        filteredOut += before - pulledTx.length;
+      }
+      if(filteredOut > 0){
+        GitLog.warn('tombstone', `Ignorando ${filteredOut} elemento(s) borrado(s) localmente que aún existen en GitHub. Se subirá su borrado.`);
+      }
+
+      // --- Protección contra "ediciones locales pisadas por el pull" ---
+      // Si una reparación local tiene cambios sin subir (updatedAt mayor que
+      // el de la versión remota), conservamos la versión local.
+      // (Nota: ya existe `localById` arriba, pero al haber hecho
+      // potencialmente DB.replaceAll en otra ruta, lo reconstruimos.)
+      const localByIdNow = new Map(DB.repairs.map(r=>[r.id, r]));
+      let keptLocal = 0;
+      pulledRepairs = pulledRepairs.map(r => {
+        const loc = localByIdNow.get(r.id);
+        if(loc && (loc.updatedAt||0) > (r.updatedAt||0)){
+          keptLocal++;
+          return loc;
+        }
+        return r;
+      });
+      if(keptLocal > 0){
+        GitLog.warn('local-edit', `Conservando ${keptLocal} reparación(es) con ediciones locales más nuevas que el remoto.`);
+      }
+
       const base = idxData ? {
         schemaVersion: idxData.schemaVersion,
         settings: idxData.settings || {},
-        transactions: idxData.transactions || [],
+        transactions: pulledTx,
         counter: idxData.counter || 1,
         txCounter: idxData.txCounter || 1,
-        repairs: remoteRepairs.map(x=>x.raw)
+        repairs: pulledRepairs
       } : {
-        repairs: remoteRepairs.map(x=>x.raw)
+        repairs: pulledRepairs
       };
       // Preservar token local (nunca viene del repo)
       const localToken = DB.settings.github.token;
@@ -494,7 +568,13 @@ const GitSync = (() => {
         lastHashes['sha:'+it.raw.id] = it.sha;
       }
       saveHashCache();
-      knownDeleted.clear(); saveDeleted();
+      // IMPORTANTE: NO borramos los tombstones aquí. Solo se eliminan tras
+      // confirmarse el borrado en GitHub dentro de pushAll(). De lo
+      // contrario, una eliminación local podría perderse si el autoPull
+      // se ejecuta antes que el autoPush.
+      if(filteredOut > 0 || keptLocal > 0){
+        try{ schedulePush(); }catch(_){}
+      }
       tick('index');
 
       GitLog.ok('done', `Descargadas ${remoteRepairs.length} reparación(es)`);
@@ -592,7 +672,7 @@ const GitSync = (() => {
     test: testConnection,
     push: pushAll, pull: pullAll, schedulePush,
     getPendingPush, getPendingPull,
-    markDeleted,
+    markDeleted, markDeletedTx,
     startAutoPull, stopAutoPull, autoPullNow: autoPullTick,
     // Compatibilidad con código viejo:
     pushLegacy: pushAll
