@@ -125,6 +125,8 @@ const App = (() => {
     go('dashboard');
     // Auditoría automática al entrar: avisa si algo no cuadra
     setTimeout(()=>{ if(window.Views && Views.autoAuditOnLoad) Views.autoAuditOnLoad(); }, 600);
+    // Iniciar sincronización automática (descarga) desde GitHub
+    try{ if(window.GitSync && GitSync.startAutoPull) GitSync.startAutoPull(); }catch(_){}
   }
   function go(v, arg, extra){
     // Si salimos del formulario "nuevo/editar", limpiar la guardia de back-navigation

@@ -505,12 +505,86 @@ const GitSync = (() => {
   }
 
   // ---------- Auto-sync ----------
+  function toast(msg){
+    try{ if(window.UI && UI.toast) UI.toast(msg); }catch(_){}
+  }
   function schedulePush(){
-    if(!cfgOk() || !g().autoSync) return;
+    if(!cfgOk()){
+      GitLog.warn('auto','Configuración de GitHub incompleta — los cambios NO se subirán');
+      return;
+    }
+    if(!g().autoSync){
+      GitLog.warn('auto','Sincronización automática desactivada — los cambios NO se subirán');
+      return;
+    }
     clearTimeout(pushTimer);
-    pushTimer = setTimeout(()=>{
-      pushAll().catch(e => GitLog.err('auto', e.message));
+    pushTimer = setTimeout(async ()=>{
+      try{
+        toast('Subiendo cambios a la nube…');
+        const res = await pushAll();
+        if(res && (res.pushed>0 || res.deleted>0)){
+          toast(`✓ Cambios subidos a la nube (${res.pushed} subida(s), ${res.deleted} borrada(s))`);
+        }else{
+          toast('✓ Todo sincronizado con la nube');
+        }
+      }catch(e){
+        GitLog.err('auto', e.message);
+        toast('⚠ Error subiendo a la nube: '+(e.message||e));
+      }
     }, 1800);
+  }
+
+  // ---------- Auto-pull (polling de cambios remotos) ----------
+  let pullTimer = null;
+  let pullInFlight = false;
+  let pullListenersBound = false;
+  const PULL_INTERVAL_MS = 12000; // cada 12s comprueba cambios remotos
+  async function autoPullTick(){
+    if(pullInFlight) return;
+    if(!cfgOk() || !g().autoSync) return;
+    if(busy) return;
+    if(typeof document !== 'undefined' && document.hidden) return;
+    pullInFlight = true;
+    try{
+      const pending = await getPendingPull();
+      if(pending && pending.total > 0){
+        GitLog.info('auto-pull', `Cambios remotos detectados: ${pending.total}. Descargando…`);
+        toast('Bajando cambios desde la nube…');
+        await pullAll();
+        try{ if(window.App && typeof App.refresh === 'function') App.refresh(); }catch(_){}
+        toast(`✓ ${pending.total} cambio(s) recibido(s) desde la nube`);
+      }
+    }catch(e){
+      GitLog.warn('auto-pull', e.message || String(e));
+    }finally{
+      pullInFlight = false;
+    }
+  }
+  function startAutoPull(){
+    stopAutoPull();
+    // Al iniciar: primero bajamos cambios remotos, luego subimos los locales pendientes.
+    setTimeout(async ()=>{
+      await autoPullTick();
+      try{
+        if(cfgOk() && g().autoSync){
+          const pend = await getPendingPush();
+          if(pend && pend.total > 0){
+            GitLog.info('auto-push-init', `Pendientes locales: ${pend.total}. Subiendo…`);
+            schedulePush();
+          }
+        }
+      }catch(_){}
+    }, 1500);
+    pullTimer = setInterval(autoPullTick, PULL_INTERVAL_MS);
+    if(!pullListenersBound){
+      pullListenersBound = true;
+      document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) autoPullTick(); });
+      window.addEventListener('online', ()=> { autoPullTick(); if(cfgOk()&&g().autoSync) schedulePush(); });
+      window.addEventListener('focus', ()=> autoPullTick());
+    }
+  }
+  function stopAutoPull(){
+    if(pullTimer){ clearInterval(pullTimer); pullTimer = null; }
   }
 
   return {
@@ -519,6 +593,7 @@ const GitSync = (() => {
     push: pushAll, pull: pullAll, schedulePush,
     getPendingPush, getPendingPull,
     markDeleted,
+    startAutoPull, stopAutoPull, autoPullNow: autoPullTick,
     // Compatibilidad con código viejo:
     pushLegacy: pushAll
   };
