@@ -1,9 +1,9 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1781805735509,
+  "savedAt": 1781805802532,
   "repair": {
-    "clientName": "Pp",
+    "clientName": "",
     "clientAddress": null,
     "clientIdNumber": null,
     "device": "",
@@ -16,7 +16,7 @@
     "clientPhones": [],
     "clientPhone": null,
     "dueDate": null,
-    "createdAt": 1781805733688,
+    "createdAt": 1781805800715,
     "price": null,
     "deposit": null,
     "warrantyDays": 10,
@@ -27,6 +27,6 @@
     "naFields": [],
     "parts": [],
     "id": "R0023",
-    "updatedAt": 1781805733688
+    "updatedAt": 1781805800715
   }
 }
