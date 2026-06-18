@@ -1,0 +1,35 @@
+{
+  "kind": "repair",
+  "schema": 1,
+  "savedAt": 1781768780887,
+  "repair": {
+    "clientName": "Juan Antonio",
+    "clientAddress": null,
+    "clientIdNumber": null,
+    "device": "",
+    "brand": null,
+    "model": null,
+    "serial": null,
+    "issue": "Nwnsnsnsns",
+    "status": "pending",
+    "notes": "Jsjsjsjsjdn",
+    "clientPhones": [
+      "949494994"
+    ],
+    "clientPhone": "949494994",
+    "dueDate": null,
+    "createdAt": 1781713403214,
+    "price": null,
+    "deposit": null,
+    "warrantyDays": 10,
+    "devicePhotos": [],
+    "devicePhoto": null,
+    "clientPhoto": null,
+    "acceptAudio": null,
+    "naFields": [],
+    "parts": [],
+    "id": "R0013",
+    "updatedAt": 1781713403214,
+    "deliveredAt": null
+  }
+}
