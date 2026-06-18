@@ -1,0 +1,32 @@
+{
+  "kind": "repair",
+  "schema": 1,
+  "savedAt": 1781769114402,
+  "repair": {
+    "clientName": "",
+    "clientAddress": null,
+    "clientIdNumber": null,
+    "device": "",
+    "brand": null,
+    "model": null,
+    "serial": null,
+    "issue": "",
+    "status": "pending",
+    "notes": null,
+    "clientPhones": [],
+    "clientPhone": null,
+    "dueDate": null,
+    "createdAt": 1781769112582,
+    "price": null,
+    "deposit": null,
+    "warrantyDays": 10,
+    "devicePhotos": [],
+    "devicePhoto": null,
+    "clientPhoto": null,
+    "acceptAudio": null,
+    "naFields": [],
+    "parts": [],
+    "id": "R0014",
+    "updatedAt": 1781769112582
+  }
+}
