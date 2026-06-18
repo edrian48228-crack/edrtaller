@@ -1693,14 +1693,34 @@ const Views = (() => {
       DB.updateGithub(readGh());
       runOp('Conexión', ()=> GitSync.test());
     };
-    document.getElementById('ghPush').onclick = ()=>{
+    document.getElementById('ghPush').onclick = async ()=>{
       DB.updateGithub(readGh());
-      runOp('Subida', ()=> GitSync.push({ onProgress:setProgress }));
+      try{
+        const p = await GitSync.getPendingPush();
+        if(p.total === 0){
+          UI.toast('No hay cambios nuevos para subir');
+          return;
+        }
+        if(!confirm('¿Quieres subir la información al servidor de GitHub?')) return;
+        runOp('Subida', ()=> GitSync.push({ onProgress:setProgress }));
+      }catch(e){
+        UI.toast('Error: '+e.message);
+      }
     };
     document.getElementById('ghPull').onclick = async ()=>{
       DB.updateGithub(readGh());
-      if(!confirm('Esto reemplazará tus reparaciones locales con las del repositorio. ¿Continuar?')) return;
-      runOp('Descarga', ()=> GitSync.pull({ onProgress:setProgress }));
+      try{
+        UI.toast('Comprobando cambios en GitHub…');
+        const p = await GitSync.getPendingPull();
+        if(p.total === 0){
+          UI.toast('Ya estás al día: no hay cambios en GitHub');
+          return;
+        }
+        if(!confirm('¿Quieres bajar la información del servidor de GitHub?')) return;
+        runOp('Descarga', ()=> GitSync.pull({ onProgress:setProgress }));
+      }catch(e){
+        UI.toast('Error: '+e.message);
+      }
     };
 
     if(typeof LocalFile !== 'undefined' && localSupported){

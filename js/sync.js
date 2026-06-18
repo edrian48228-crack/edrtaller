@@ -225,6 +225,55 @@ const GitSync = (() => {
     }, null, 2);
   }
 
+
+  // ---------- Detección de cambios (deltas) ----------
+  async function getPendingPush(){
+    // No requiere red: solo compara hashes locales con el caché de la última subida.
+    const repairs = DB.repairs.slice();
+    const modified = [];
+    for(const r of repairs){
+      const txt = buildRepairPayload(r);
+      const h = await sha256(txt);
+      if(lastHashes['r:'+r.id] !== h) modified.push(r.id);
+    }
+    const idxTxt = buildIndexPayload();
+    const idxH = await sha256(idxTxt);
+    const indexChanged = lastHashes['idx'] !== idxH;
+    return {
+      modified,
+      deleted: [...knownDeleted],
+      indexChanged,
+      total: modified.length + knownDeleted.size + (indexChanged?1:0)
+    };
+  }
+
+  async function getPendingPull(){
+    // Consulta GitHub solo para listar y comparar SHAs (no descarga contenidos).
+    if(!cfgOk()) throw new Error('Configuración incompleta');
+    const out = { changed: [], created: [], removed: [], indexChanged: false, total: 0 };
+    // index
+    const idxRemote = await getFile(indexFile());
+    if(idxRemote.sha && idxRemote.sha !== lastHashes['idxRemoteSha']) out.indexChanged = true;
+    if(!idxRemote.sha) out.indexChanged = false;
+    // repairs/
+    const files = await listDir(repairsDir());
+    const jsonFiles = files.filter(f => f.type==='file' && /\.json$/i.test(f.name));
+    const localIds = new Set(DB.repairs.map(r=>r.id));
+    const remoteIds = new Set();
+    for(const f of jsonFiles){
+      const id = f.name.replace(/\.json$/i,'');
+      remoteIds.add(id);
+      const cachedSha = lastHashes['sha:'+id];
+      if(!localIds.has(id)) out.created.push(id);
+      else if(cachedSha !== f.sha) out.changed.push(id);
+    }
+    for(const id of localIds){
+      if(!remoteIds.has(id)) out.removed.push(id);
+    }
+    out.total = out.changed.length + out.created.length + out.removed.length + (out.indexChanged?1:0);
+    return out;
+  }
+
   // ---------- Operaciones de alto nivel ----------
   async function testConnection(){
     if(!cfgOk()) throw new Error('Completa usuario, repositorio y token');
@@ -258,17 +307,35 @@ const GitSync = (() => {
       GitLog.info('plan', `${pending.length} reparación(es) modificadas · ${deletes.length} a eliminar`);
 
       // 1) Subir cada reparación cambiada
+      let reallyPushed = 0, skippedSame = 0;
       for(const it of pending){
         const path = repairFile(it.r.id);
         const remote = await getFile(path);
+        // Comprobación remota: si el contenido en GitHub ya es idéntico
+        // a lo que íbamos a subir, NO lo volvemos a subir. Solo
+        // actualizamos el caché local para no volver a comprobarlo.
+        if(remote.content){
+          const remoteH = await sha256(remote.content);
+          if(remoteH === it.h){
+            lastHashes['r:'+it.r.id] = it.h;
+            lastHashes['sha:'+it.r.id] = remote.sha;
+            saveHashCache();
+            GitLog.info('skip', `${it.r.id} ya está actualizado en GitHub`);
+            skippedSame++;
+            tick(it.r.id);
+            continue;
+          }
+        }
         const newSha = await putFile(path, it.txt, remote.sha,
           remote.sha ? `taller: actualizar ${it.r.id}` : `taller: crear ${it.r.id}`);
         lastHashes['r:'+it.r.id] = it.h;
         lastHashes['sha:'+it.r.id] = newSha;
         saveHashCache();
         GitLog.ok(remote.sha?'update':'create', `${it.r.id} → ${path}`);
+        reallyPushed++;
         tick(it.r.id);
       }
+      if(skippedSame) GitLog.info('delta', `${skippedSame} reparación(es) ya estaban iguales en GitHub, omitidas`);
 
       // 2) Borrar los marcados como eliminados
       for(const id of deletes){
@@ -296,9 +363,25 @@ const GitSync = (() => {
       const idxTxt = buildIndexPayload();
       const idxPath = indexFile();
       const idxRemote = await getFile(idxPath);
-      const idxSha = await putFile(idxPath, idxTxt, idxRemote.sha, 'taller: actualizar index.json');
+      let idxSha = idxRemote.sha;
+      const idxH = await sha256(idxTxt);
+      const remoteIdxH = idxRemote.content ? await sha256(idxRemote.content) : null;
+      if(remoteIdxH === idxH){
+        // Remoto ya idéntico: no subimos nada, solo refrescamos caché.
+        lastHashes['idx'] = idxH;
+        lastHashes['idxRemoteSha'] = idxRemote.sha;
+        saveHashCache();
+        GitLog.info('index', 'index.json ya está idéntico en GitHub, omitido');
+      } else if(lastHashes['idx'] !== idxH){
+        idxSha = await putFile(idxPath, idxTxt, idxRemote.sha, 'taller: actualizar index.json');
+        lastHashes['idx'] = idxH;
+        lastHashes['idxRemoteSha'] = idxSha;
+        saveHashCache();
+        GitLog.ok('index', 'index.json subido');
+      } else {
+        GitLog.info('index', 'index.json sin cambios, omitido');
+      }
       DB.updateGithub({ lastSha: idxSha, lastSyncAt: Date.now() });
-      GitLog.ok('index', 'index.json subido');
       tick('index');
 
       GitLog.ok('done', `Sincronización completa: ${pending.length} subida(s), ${deletes.length} eliminada(s)`);
@@ -359,18 +442,31 @@ const GitSync = (() => {
       const tick = (msg)=>{ done++; onProgress(done,total,msg); };
 
       const remoteRepairs = [];
+      const localById = new Map(DB.repairs.map(r=>[r.id, r]));
+      let skipped = 0, fetched = 0;
       for(const f of jsonFiles){
+        const id = f.name.replace(/\.json$/i,'');
+        const cachedSha = lastHashes['sha:'+id];
+        if(cachedSha === f.sha && localById.has(id)){
+          // Sin cambios remotos: reutilizamos la copia local.
+          remoteRepairs.push({ raw: localById.get(id), sha: f.sha, body: null });
+          skipped++;
+          tick(f.name);
+          continue;
+        }
         const remote = await getFile(basePath()+'/repairs/'+f.name);
         if(!remote.content){ tick(f.name); continue; }
         try{
           const parsed = JSON.parse(remote.content);
           if(parsed && parsed.repair){
             remoteRepairs.push({ raw: parsed.repair, sha: f.sha, body: remote.content });
+            fetched++;
             GitLog.ok('get', `${parsed.repair.id}  (${(remote.content.length/1024).toFixed(1)} KB)`);
           }
         }catch(e){ GitLog.err('parse', f.name+': '+e.message); }
         tick(f.name);
       }
+      GitLog.info('delta', `Descargadas ${fetched} reparación(es) nuevas/cambiadas, ${skipped} omitida(s) sin cambios`);
 
       // 3) Componer dataset final
       const base = idxData ? {
@@ -387,6 +483,8 @@ const GitSync = (() => {
       const localToken = DB.settings.github.token;
       DB.replaceAll(base);
       DB.updateGithub({ token: localToken, lastSyncAt: Date.now(), lastSha: idxRemote.sha });
+      lastHashes['idxRemoteSha'] = idxRemote.sha || null;
+      if(idxRemote.content){ try{ lastHashes['idx'] = await sha256(idxRemote.content); }catch(_){} }
 
       // Recalcular hashes
       lastHashes = {};
@@ -419,6 +517,7 @@ const GitSync = (() => {
     cfgOk, basePath, isBusy: ()=>busy,
     test: testConnection,
     push: pushAll, pull: pullAll, schedulePush,
+    getPendingPush, getPendingPull,
     markDeleted,
     // Compatibilidad con código viejo:
     pushLegacy: pushAll
