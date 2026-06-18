@@ -1,7 +1,7 @@
 {
   "kind": "index",
   "schema": 1,
-  "savedAt": 1781773897441,
+  "savedAt": 1781774142089,
   "schemaVersion": 9,
   "counter": 20,
   "txCounter": 8,
@@ -98,8 +98,8 @@
       "path": "taller-data.json",
       "token": "",
       "autoSync": true,
-      "lastSyncAt": 1781773113585,
-      "lastSha": "1af805f8e1039dca1ed54ed943e0127f4607bd58"
+      "lastSyncAt": 1781774101044,
+      "lastSha": "9b7e2b8f27d2a9898738cd9c748d3933ede7b737"
     }
   },
   "transactions": [
@@ -180,17 +180,14 @@
     }
   ],
   "repairIds": [
-    "R0019",
-    "R0018",
-    "R0017",
-    "R0012",
-    "R0011",
-    "R0010",
-    "R0009",
-    "R0008",
-    "R0007",
+    "R0003",
     "R0005",
-    "R0004",
-    "R0003"
+    "R0007",
+    "R0008",
+    "R0009",
+    "R0010",
+    "R0011",
+    "R0012",
+    "R0017"
   ]
 }
