@@ -1,7 +1,7 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1781957041656,
+  "savedAt": 1781957107047,
   "repair": {
     "clientName": "Kevin",
     "clientAddress": null,
@@ -27,6 +27,7 @@
     "naFields": [],
     "parts": [],
     "id": "R0026-EB5K",
-    "updatedAt": 1781957039808
+    "updatedAt": 1781957039808,
+    "deliveredAt": null
   }
 }
