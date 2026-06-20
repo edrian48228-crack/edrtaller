@@ -1,9 +1,9 @@
 {
   "kind": "index",
   "schema": 1,
-  "savedAt": 1781956848659,
+  "savedAt": 1781956984217,
   "schemaVersion": 9,
-  "counter": 23,
+  "counter": 25,
   "txCounter": 8,
   "settings": {
     "appName": "RepairPro EDR",
@@ -98,8 +98,8 @@
       "path": "taller-data.json",
       "token": "",
       "autoSync": true,
-      "lastSyncAt": 1781956830350,
-      "lastSha": "d9d7e2ba8a918b6a7e7ad062602b39466e40b39e"
+      "lastSyncAt": 1781956960827,
+      "lastSha": "e68626b2256c0d173fc1b8913945b95ebdf67991"
     }
   },
   "transactions": [
@@ -187,6 +187,8 @@
     "R0009",
     "R0010",
     "R0011",
-    "R0012"
+    "R0012",
+    "R0024-EB5K",
+    "R0023-EB5K"
   ]
 }
