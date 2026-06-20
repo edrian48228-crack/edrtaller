@@ -1,7 +1,7 @@
 {
   "kind": "index",
   "schema": 1,
-  "savedAt": 1781958567505,
+  "savedAt": 1781958761519,
   "schemaVersion": 9,
   "counter": 28,
   "txCounter": 8,
@@ -98,8 +98,8 @@
       "path": "taller-data.json",
       "token": "",
       "autoSync": true,
-      "lastSyncAt": 1781958527346,
-      "lastSha": "ee973e5223a4a530dee4f0d762a59cb828339e9f"
+      "lastSyncAt": 1781958664678,
+      "lastSha": "29e5e39422e338cef45401767f159ebc275a6e14"
     }
   },
   "transactions": [
