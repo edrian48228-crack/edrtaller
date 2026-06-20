@@ -289,7 +289,16 @@ const Views = (() => {
   }
 
   function newRepair(existing){
-    const r = existing || {};
+    const DRAFT_KEY = 'taller_repair_draft_v1';
+    let r = existing || {};
+    if(!existing){
+      try{
+        const draft = JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');
+        if(draft && draft.savedAt && (Date.now() - draft.savedAt) < 7*86400000){
+          r = draft.data || {};
+        }
+      }catch(_){}
+    }
     // === Guardar progreso ante "atrás" del navegador / Android ===
     // Empuja un estado falso para capturar la primera "atrás" y preguntar.
     try{
@@ -467,6 +476,7 @@ const Views = (() => {
       });
       if(!ok) return;
       try{ if(rec) rec.cancel(); }catch(e){}
+      if(!existing) try{ localStorage.removeItem(DRAFT_KEY); }catch(_){}
       try{ if(window.__formGuardCleanup) window.__formGuardCleanup(); }catch(_){}
       App.go(existing ? 'repairs' : 'dashboard');
     };
@@ -488,6 +498,7 @@ const Views = (() => {
         UI.toast('Reparación cancelada');
         App.go('repairs');
       } else {
+        try{ localStorage.removeItem(DRAFT_KEY); }catch(_){}
         App.go('dashboard');
       }
     };
@@ -798,6 +809,55 @@ const Views = (() => {
     if(dueEl) dueEl.addEventListener('change', syncWarrantyAvailability);
     syncWarrantyAvailability();
 
+    function collectRepairDataFromForm(){
+      const form = document.getElementById('repairForm');
+      if(!form) return null;
+      const fd = new FormData(form);
+      const data = {};
+      ['clientName','clientAddress','clientIdNumber','device','brand','model','serial','issue','status','notes'].forEach(k=>{
+        const v = fd.get(k);
+        data[k] = naFields.includes(k) ? null : (v != null ? String(v).trim() || null : null);
+      });
+      data.clientName = (fd.get('clientName')||'').trim();
+      data.device = fd.get('device');
+      data.issue = fd.get('issue');
+      data.status = fd.get('status');
+      const cleanPhones = naFields.includes('clientPhones') ? [] : phones.map(p=>String(p||'').trim()).filter(Boolean);
+      data.clientPhones = cleanPhones;
+      data.clientPhone = cleanPhones[0] || null;
+      const due = fd.get('dueDate');
+      data.dueDate = due ? new Date(due+'T12:00:00').getTime() : null;
+      const cAt = fd.get('createdAt');
+      if(cAt){ data.createdAt = new Date(cAt+'T12:00:00').getTime(); }
+      const price = fd.get('price'); const dep = fd.get('deposit');
+      data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
+      data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
+      const wd = fd.get('warrantyDays');
+      data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
+      data.devicePhotos = photos.device;
+      data.devicePhoto = photos.device[0] || null;
+      data.clientPhoto = photos.client;
+      data.acceptAudio = acceptAudio;
+      data.naFields = naFields.slice();
+      data.parts = parts.map(p=>({ name:p.name||'', qty:p.qty||1, unitCost:p.unitCost!=null?p.unitCost:'' }));
+      return data;
+    }
+    function saveDraft(){
+      if(existing) return;
+      try{
+        const data = collectRepairDataFromForm();
+        if(data) localStorage.setItem(DRAFT_KEY, JSON.stringify({ savedAt: Date.now(), data }));
+      }catch(_){}
+    }
+    const draftTimer = !existing ? setInterval(saveDraft, 1200) : null;
+    document.getElementById('repairForm').addEventListener('input', saveDraft);
+    document.getElementById('repairForm').addEventListener('change', saveDraft);
+    const prevFormCleanup = window.__formGuardCleanup;
+    window.__formGuardCleanup = ()=>{
+      if(draftTimer) clearInterval(draftTimer);
+      try{ if(prevFormCleanup) prevFormCleanup(); }catch(_){}
+    };
+
 
 
 
@@ -883,6 +943,7 @@ const Views = (() => {
         } else {
           const nr = DB.addRepair(data);
           UI.toast('Reparación registrada: '+nr.id);
+          try{ localStorage.removeItem(DRAFT_KEY); }catch(_){}
         }
         try{ if(window.__formGuardCleanup) window.__formGuardCleanup(); }catch(_){}
         App.go('repairs');

@@ -43,6 +43,7 @@ const GitSync = (() => {
   let pushTimer = null;
   let busy = false;
   let lastHashes = {}; // id -> hash de su JSON (para detectar cambios)
+  let knownDirty = new Set(); // reparaciones guardadas localmente pendientes de confirmar en servidor
   let knownDeleted = new Set();
   // Tombstones de transacciones (las transacciones viven dentro de index.json,
   // así que necesitamos recordar localmente cuáles borramos para que no
@@ -185,9 +186,12 @@ const GitSync = (() => {
   function loadHashCache(){
     try{ lastHashes = JSON.parse(localStorage.getItem('taller_gh_hashes')||'{}'); }
     catch(_){ lastHashes = {}; }
+    try{ knownDirty = new Set(JSON.parse(localStorage.getItem('taller_gh_dirty_repairs')||'[]')); }
+    catch(_){ knownDirty = new Set(); }
   }
   function saveHashCache(){
     try{ localStorage.setItem('taller_gh_hashes', JSON.stringify(lastHashes)); }catch(_){}
+    try{ localStorage.setItem('taller_gh_dirty_repairs', JSON.stringify([...knownDirty])); }catch(_){}
   }
   function loadDeleted(){
     try{ knownDeleted = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted')||'[]')); }
@@ -209,6 +213,13 @@ const GitSync = (() => {
     knownDeletedTx.add(id);
     saveDeleted();
     GitLog.info('marca', `Transacción ${id} pendiente de eliminar en GitHub`);
+    schedulePush();
+  }
+  function markDirty(id){
+    if(!id) return;
+    knownDirty.add(id);
+    saveHashCache();
+    GitLog.info('local', `Reparación ${id} guardada localmente y pendiente de subir`);
     schedulePush();
   }
 
@@ -248,7 +259,7 @@ const GitSync = (() => {
     for(const r of repairs){
       const txt = buildRepairPayload(r);
       const h = await sha256(txt);
-      if(lastHashes['r:'+r.id] !== h) modified.push(r.id);
+        if(knownDirty.has(r.id) || !lastHashes['sha:'+r.id] || lastHashes['r:'+r.id] !== h) modified.push(r.id);
     }
     const idxTxt = buildIndexPayload();
     const idxH = await sha256(idxTxt);
@@ -286,6 +297,11 @@ const GitSync = (() => {
       if(!remoteIds.has(id)) out.removed.push(id);
     }
     out.total = out.changed.length + out.created.length + out.removed.length + (out.indexChanged?1:0);
+    // Nota: "removed" son reparaciones locales que no existen en GitHub todavía
+    // (pendientes de subir). NO deben disparar un pull; solo se incluyen en
+    // el total para diagnóstico. El autoPullTick solo actúa si hay cambios remotos.
+    const remotePendingTotal = out.changed.length + out.created.length + (out.indexChanged?1:0);
+    out.remotePendingTotal = remotePendingTotal;
     return out;
   }
 
@@ -312,7 +328,7 @@ const GitSync = (() => {
       for(const r of repairs){
         const txt = buildRepairPayload(r);
         const h = await sha256(txt);
-        if(lastHashes['r:'+r.id] !== h) pending.push({ r, txt, h });
+        if(knownDirty.has(r.id) || !lastHashes['sha:'+r.id] || lastHashes['r:'+r.id] !== h) pending.push({ r, txt, h });
       }
       const deletes = [...knownDeleted];
       const total = pending.length + deletes.length + 1; // +1 index
@@ -334,6 +350,7 @@ const GitSync = (() => {
           if(remoteH === it.h){
             lastHashes['r:'+it.r.id] = it.h;
             lastHashes['sha:'+it.r.id] = remote.sha;
+            knownDirty.delete(it.r.id);
             saveHashCache();
             GitLog.info('skip', `${it.r.id} ya está actualizado en GitHub`);
             skippedSame++;
@@ -345,6 +362,7 @@ const GitSync = (() => {
           remote.sha ? `taller: actualizar ${it.r.id}` : `taller: crear ${it.r.id}`);
         lastHashes['r:'+it.r.id] = it.h;
         lastHashes['sha:'+it.r.id] = newSha;
+        knownDirty.delete(it.r.id);
         saveHashCache();
         GitLog.ok(remote.sha?'update':'create', `${it.r.id} → ${path}`);
         reallyPushed++;
@@ -365,6 +383,7 @@ const GitSync = (() => {
           }
           delete lastHashes['r:'+id];
           delete lastHashes['sha:'+id];
+          knownDirty.delete(id);
           saveHashCache();
           knownDeleted.delete(id);
           saveDeleted();
@@ -503,6 +522,20 @@ const GitSync = (() => {
       let pulledRepairs = remoteRepairs.map(x=>x.raw);
       let pulledTx = idxData ? (idxData.transactions || []) : [];
 
+      // --- Preservar transacciones locales no subidas ---
+      // Las transacciones viven en index.json. Si hay transacciones locales nuevas
+      // que aún no se subieron, el index.json remoto no las tiene. Las fusionamos.
+      if(pulledTx.length > 0 || DB.transactions.length > 0){
+        const remoteTxIds = new Set(pulledTx.map(t=>t.id));
+        for(const t of DB.transactions){
+          if(!remoteTxIds.has(t.id) && !knownDeletedTx.has(t.id)){
+            pulledTx.push(t);
+          }
+        }
+      } else {
+        pulledTx = DB.transactions.filter(t => !knownDeletedTx.has(t.id));
+      }
+
       // --- Protección contra "datos eliminados que reaparecen" ---
       // Si tenemos tombstones locales (cosas borradas en este dispositivo
       // pero que el otro dispositivo aún no ha visto), las filtramos del
@@ -533,7 +566,7 @@ const GitSync = (() => {
       let keptLocal = 0;
       pulledRepairs = pulledRepairs.map(r => {
         const loc = localByIdNow.get(r.id);
-        if(loc && (loc.updatedAt||0) > (r.updatedAt||0)){
+        if(loc && (knownDirty.has(r.id) || (loc.updatedAt||0) > (r.updatedAt||0))){
           keptLocal++;
           return loc;
         }
@@ -543,36 +576,70 @@ const GitSync = (() => {
         GitLog.warn('local-edit', `Conservando ${keptLocal} reparación(es) con ediciones locales más nuevas que el remoto.`);
       }
 
+      // --- Protección contra "reparaciones nuevas locales perdidas en el pull" ---
+      // Las reparaciones que existen localmente pero NO en GitHub (aún no subidas)
+      // deben mantenerse en el dataset final. Sin esto, un pull automático al
+      // detectar conexión borraría la reparación recién registrada en este dispositivo.
+      const remoteIds = new Set(remoteRepairs.map(x=>x.raw.id));
+      let addedLocal = 0;
+      for(const [id, loc] of localByIdNow){
+        if(!remoteIds.has(id) && !knownDeleted.has(id)){
+          pulledRepairs.push(loc);
+          addedLocal++;
+        }
+      }
+      if(addedLocal > 0){
+        GitLog.warn('local-new', `Conservando ${addedLocal} reparación(es) local(es) aún no subida(s) a GitHub.`);
+      }
+
       const base = idxData ? {
         schemaVersion: idxData.schemaVersion,
         settings: idxData.settings || {},
         transactions: pulledTx,
-        counter: idxData.counter || 1,
-        txCounter: idxData.txCounter || 1,
+        // Usar el mayor entre remoto y local para no perder IDs de reparaciones
+        // nuevas registradas localmente que aún no se han subido al índice.
+        counter: Math.max(idxData.counter || 1, DB.all.counter || 1),
+        txCounter: Math.max(idxData.txCounter || 1, DB.all.txCounter || 1),
         repairs: pulledRepairs
       } : {
+        counter: DB.all.counter || 1,
+        txCounter: DB.all.txCounter || 1,
         repairs: pulledRepairs
       };
       // Preservar token local (nunca viene del repo)
       const localToken = DB.settings.github.token;
       DB.replaceAll(base);
       DB.updateGithub({ token: localToken, lastSyncAt: Date.now(), lastSha: idxRemote.sha });
-      lastHashes['idxRemoteSha'] = idxRemote.sha || null;
-      if(idxRemote.content){ try{ lastHashes['idx'] = await sha256(idxRemote.content); }catch(_){} }
 
       // Recalcular hashes
+      // IMPORTANTE: para reparaciones que conservamos en versión local (keptLocal o addedLocal),
+      // usamos la reparación tal como quedó en DB (la local), NO la remota.
+      // Si están en knownDirty o no tienen SHA remoto, NO guardamos r:<id> como sincronizado;
+      // así el siguiente getPendingPush() las detecta como pendientes y las sube.
       lastHashes = {};
+      // Índice remoto
+      lastHashes['idxRemoteSha'] = idxRemote.sha || null;
+      if(idxRemote.content){ try{ lastHashes['idx'] = await sha256(idxRemote.content); }catch(_){} }
+      // Primero volcar los SHAs remotos conocidos (para las que sí bajamos igual)
       for(const it of remoteRepairs){
-        const txt = buildRepairPayload(it.raw);
-        lastHashes['r:'+it.raw.id] = await sha256(txt);
         lastHashes['sha:'+it.raw.id] = it.sha;
+      }
+      // Recalcular hash de contenido desde DB (que puede ser local para keptLocal/addedLocal)
+      for(const r of DB.repairs){
+        const txt = buildRepairPayload(r);
+        if(!knownDirty.has(r.id) && lastHashes['sha:'+r.id]){
+          lastHashes['r:'+r.id] = await sha256(txt);
+        } else {
+          delete lastHashes['r:'+r.id];
+        }
+        // sha: del remoto ya fue puesto arriba; si no existe o quedó dirty se fuerza push
       }
       saveHashCache();
       // IMPORTANTE: NO borramos los tombstones aquí. Solo se eliminan tras
       // confirmarse el borrado en GitHub dentro de pushAll(). De lo
       // contrario, una eliminación local podría perderse si el autoPull
       // se ejecuta antes que el autoPush.
-      if(filteredOut > 0 || keptLocal > 0){
+      if(filteredOut > 0 || keptLocal > 0 || addedLocal > 0){
         try{ schedulePush(); }catch(_){}
       }
       tick('index');
@@ -627,12 +694,12 @@ const GitSync = (() => {
     pullInFlight = true;
     try{
       const pending = await getPendingPull();
-      if(pending && pending.total > 0){
-        GitLog.info('auto-pull', `Cambios remotos detectados: ${pending.total}. Descargando…`);
+      if(pending && pending.remotePendingTotal > 0){
+        GitLog.info('auto-pull', `Cambios remotos detectados: ${pending.remotePendingTotal}. Descargando…`);
         toast('Bajando cambios desde la nube…');
         await pullAll();
         try{ if(window.App && typeof App.refresh === 'function') App.refresh(); }catch(_){}
-        toast(`✓ ${pending.total} cambio(s) recibido(s) desde la nube`);
+        toast(`✓ ${pending.remotePendingTotal} cambio(s) recibido(s) desde la nube`);
       }
     }catch(e){
       GitLog.warn('auto-pull', e.message || String(e));
@@ -670,7 +737,7 @@ const GitSync = (() => {
   return {
     cfgOk, basePath, isBusy: ()=>busy,
     test: testConnection,
-    push: pushAll, pull: pullAll, schedulePush,
+    push: pushAll, pull: pullAll, schedulePush, markDirty,
     getPendingPush, getPendingPull,
     markDeleted, markDeletedTx,
     startAutoPull, stopAutoPull, autoPullNow: autoPullTick,

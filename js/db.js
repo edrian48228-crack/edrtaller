@@ -189,12 +189,20 @@ const DB = (() => {
       save();
     },
     addRepair(r){
-      r.id = 'R' + String(data.counter++).padStart(4,'0');
+      const localSuffix = (()=>{
+        try{
+          let v = localStorage.getItem('taller_device_id');
+          if(!v){ v = Math.random().toString(36).slice(2,6).toUpperCase(); localStorage.setItem('taller_device_id', v); }
+          return v;
+        }catch(_){ return Math.random().toString(36).slice(2,6).toUpperCase(); }
+      })();
+      r.id = 'R' + String(data.counter++).padStart(4,'0') + '-' + localSuffix;
       r.createdAt = Date.now();
       r.updatedAt = Date.now();
       if(r.status === 'delivered' && !r.deliveredAt) r.deliveredAt = Date.now();
       data.repairs.unshift(r);
       save();
+      try{ window.GitSync && window.GitSync.markDirty && window.GitSync.markDirty(r.id); }catch(e){}
       return r;
     },
     updateRepair(id, patch){
@@ -205,6 +213,7 @@ const DB = (() => {
       if(r.status === 'delivered' && !r.deliveredAt) r.deliveredAt = Date.now();
       if(prevStatus === 'delivered' && r.status !== 'delivered') r.deliveredAt = null;
       save();
+      try{ window.GitSync && window.GitSync.markDirty && window.GitSync.markDirty(id); }catch(e){}
       return r;
     },
     deleteRepair(id){
@@ -373,7 +382,8 @@ const DB = (() => {
         }
         // Ajustar contadores para no chocar con ids existentes
         const maxRep = data.repairs.reduce((m,r)=>{
-          const n = parseInt(String(r.id||'').replace(/\D/g,''),10);
+          const match = String(r.id||'').match(/^R(\d+)/i);
+          const n = match ? parseInt(match[1],10) : NaN;
           return isFinite(n)&&n>m ? n : m;
         }, 0);
         if(maxRep+1 > (data.counter||1)) data.counter = maxRep+1;
