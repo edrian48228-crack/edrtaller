@@ -1,0 +1,33 @@
+{
+  "kind": "repair",
+  "schema": 1,
+  "savedAt": 1781957107047,
+  "repair": {
+    "clientName": "",
+    "clientAddress": null,
+    "clientIdNumber": null,
+    "device": "",
+    "brand": null,
+    "model": null,
+    "serial": null,
+    "issue": "",
+    "status": "pending",
+    "notes": null,
+    "clientPhones": [],
+    "clientPhone": null,
+    "dueDate": null,
+    "createdAt": 1781957091719,
+    "price": null,
+    "deposit": null,
+    "warrantyDays": 10,
+    "devicePhotos": [],
+    "devicePhoto": null,
+    "clientPhoto": null,
+    "acceptAudio": null,
+    "naFields": [],
+    "parts": [],
+    "id": "R0027-EB5K",
+    "updatedAt": 1781957091719,
+    "deliveredAt": null
+  }
+}
