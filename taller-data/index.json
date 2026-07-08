@@ -1,7 +1,7 @@
 {
   "kind": "index",
   "schema": 1,
-  "savedAt": 1782407720966,
+  "savedAt": 1783528825799,
   "schemaVersion": 9,
   "counter": 31,
   "txCounter": 8,
@@ -98,8 +98,8 @@
       "path": "taller-data.json",
       "token": "",
       "autoSync": true,
-      "lastSyncAt": 1782407662531,
-      "lastSha": "f0b96897d490fc7a897adbbe89566902bb1785e4"
+      "lastSyncAt": 1783528779386,
+      "lastSha": "264157f4b9753cd93978907f4d2e035eb5eb3175"
     }
   },
   "transactions": [
@@ -177,6 +177,21 @@
       "updatedAt": 1781406028182,
       "unitCost": 1400,
       "costTotal": 19600
+    },
+    {
+      "type": "sale",
+      "product": "Cargador y cable USB",
+      "quantity": 4,
+      "unitPrice": 2600,
+      "total": 10400,
+      "date": 1779667200000,
+      "counterparty": null,
+      "notes": null,
+      "id": "T0003",
+      "createdAt": 1781188673127,
+      "updatedAt": 1781188673127,
+      "unitCost": null,
+      "costTotal": null
     }
   ],
   "repairIds": [
@@ -189,6 +204,11 @@
     "R0011",
     "R0012",
     "R0023-EB5K",
-    "R0030-EB5K"
+    "R0031-EB5K",
+    "R0032-EB5K",
+    "R0010-EB5K",
+    "R0009-EB5K",
+    "R0008-EB5K",
+    "R0004"
   ]
 }
