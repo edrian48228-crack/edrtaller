@@ -1,7 +1,7 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1781773829162,
+  "savedAt": 1783528781363,
   "repair": {
     "clientName": "Julio Senat",
     "clientPhone": "59175434",
@@ -13,7 +13,7 @@
     "issue": "Carga lenta",
     "status": "delivered",
     "notes": "El movil carga de forma lenta, se tarda en cargar, sin accesorio con linea y tarjetero",
-    "dueDate": 1781193600000,
+    "dueDate": 1781049600000,
     "price": 1500,
     "deposit": null,
     "devicePhotos": [
@@ -32,15 +32,15 @@
       "deposit"
     ],
     "id": "R0004",
-    "createdAt": 1781102948000,
-    "updatedAt": 1781405939748,
+    "createdAt": 1781102948355,
+    "updatedAt": 1781189249701,
     "clientPhones": [
       "59175434"
     ],
     "clientAddress": null,
     "clientIdNumber": null,
-    "warrantyDays": null,
-    "deliveredAt": 1781405908734,
+    "warrantyDays": 10,
+    "deliveredAt": 1781175007346,
     "parts": []
   }
 }
