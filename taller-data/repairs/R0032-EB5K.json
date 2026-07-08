@@ -1,7 +1,7 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1782575556015,
+  "savedAt": 1783528781347,
   "repair": {
     "clientName": "Enrique Camacho Herrera",
     "clientAddress": "Edi24. 16 norte entre 4 y 5 oeste. 145c",
@@ -38,6 +38,7 @@
     ],
     "parts": [],
     "id": "R0032-EB5K",
-    "updatedAt": 1782575554166
+    "updatedAt": 1782575554166,
+    "deliveredAt": null
   }
 }
