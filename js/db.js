@@ -103,7 +103,12 @@ const DB = (() => {
     if(!data.settings.creator){ data.settings.creator = { phone:'', whatsapp:'' }; changed = true; }
     if(data.settings.logo === undefined){ data.settings.logo = null; changed = true; }
     if(!data.settings.logoPreset){ data.settings.logoPreset = 'tools'; changed = true; }
-    if(!Array.isArray(data.settings.securityQuestions)){ data.settings.securityQuestions = []; changed = true; }
+      if(!Array.isArray(data.settings.securityQuestions)){ data.settings.securityQuestions = []; changed = true; }
+    // Bloque de configuración compartida (viaja en index.json para que otros
+    // dispositivos se conecten sin rellenar nada; NUNCA contiene el token).
+    if(!data.settings.githubShared || typeof data.settings.githubShared!=='object'){
+      data.settings.githubShared = null; changed = true;
+    }
     data.schemaVersion = SCHEMA_VERSION;
     if(changed) save(false);
   }
@@ -176,6 +181,38 @@ const DB = (() => {
     updateGithub(patch){
       data.settings.github = { ...data.settings.github, ...patch };
       save(false);
+    },
+    setGithubShared(shared){
+      data.settings.githubShared = shared || null;
+      data.settings.githubSharedAt = shared ? (data.settings.githubSharedAt || Date.now()) : null;
+      save(false);
+    },
+    get githubShared(){ return data.settings.githubShared || null; },
+    // RESET TOTAL — restaura TODO el sistema a su estado inicial de fábrica.
+    // Borra las 10 claves de localStorage que usa la app (datos, hashes de
+    // sincronización, tombstones, borradores, sesión...) y reconstruye los
+    // valores por defecto. Conserva solo el ID de dispositivo si se pide
+    // (keeps nothing by default). Tras llamar esto, el módulo DB queda
+    // funcional en memoria con datos vacíos.
+    resetAll({ keepDeviceId = false } = {}){
+      const devId = keepDeviceId ? localStorage.getItem('taller_device_id') : null;
+      const keys = [
+        'taller_db_v1','taller_gh_hashes','taller_gh_dirty_repairs','taller_gh_dirty_tx',
+        'taller_gh_deleted','taller_gh_deleted_tx','taller_device_id',
+        'taller_repair_draft_v1','taller_session','taller_handles'
+      ];
+      for(const k of keys){
+        try{ localStorage.removeItem(k); }catch(_){}
+      }
+      data = structuredClone(defaults);
+      data.schemaVersion = SCHEMA_VERSION;
+      if(devId){ try{ localStorage.setItem('taller_device_id', devId); }catch(_){} }
+      try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(_){}
+      // Notificar al módulo de sincronización para que olvide hashes/tombstones
+      if(window.GitSync && typeof window.GitSync.resetCaches === 'function'){
+        try{ window.GitSync.resetCaches(); }catch(_){}
+      }
+      return true;
     },
     addDeviceType(name){
       name = (name||'').trim();

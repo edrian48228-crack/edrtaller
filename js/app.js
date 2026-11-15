@@ -127,6 +127,10 @@ const App = (() => {
     setTimeout(()=>{ if(window.Views && Views.autoAuditOnLoad) Views.autoAuditOnLoad(); }, 600);
     // Iniciar sincronización automática (descarga) desde GitHub
     try{ if(window.GitSync && GitSync.startAutoPull) GitSync.startAutoPull(); }catch(_){}
+    // Bootstrap v5: si este dispositivo NO tiene configuración propia y el
+    // taller publicó config.json (GitHub Pages), preguntar una única vez
+    // si desea conectarse y descargar todo sin teclear nada.
+    try{ if(window.Bootstrap && Bootstrap.run) setTimeout(()=>Bootstrap.run(), 900); }catch(_){}
     // Tarjeta de instalación PWA (Android/Chrome) o guía (iOS)
     try{ if(window.Install && Install.renderInstallCard) Install.renderInstallCard(); }catch(_){}
   }

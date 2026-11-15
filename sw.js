@@ -1,4 +1,4 @@
-const CACHE = 'taller-v37';
+const CACHE = 'taller-v38';
 const ASSETS = [
   './','./index.html','./manifest.json',
   './css/styles.css',
@@ -19,7 +19,17 @@ self.addEventListener('message', e=>{ if(e.data==='SKIP_WAITING') self.skipWaiti
 self.addEventListener('fetch', e=>{
   if(e.request.method!=='GET') return;
   if(e.request.url.includes('api.github.com')) return;
+  if(e.request.url.includes('raw.githubusercontent.com')) return;
   const url = new URL(e.request.url);
+  // taller-data/ son DATOS de sincronización servidos por Pages: siempre
+  // red primero (nunca cache) para que el bootstrap y el pull read-only
+  // lean la última versión publicada por el PC.
+  if(url.pathname.includes('/taller-data/')){
+    e.respondWith(
+      fetch(e.request).catch(()=>caches.match(e.request))
+    );
+    return;
+  }
   const isShell = /\.(html|js|css)$/.test(url.pathname) || url.pathname.endsWith('/') || e.request.mode === 'navigate';
   if(isShell){
     e.respondWith(

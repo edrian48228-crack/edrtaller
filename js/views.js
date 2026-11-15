@@ -1431,6 +1431,38 @@ const Views = (() => {
         <input type="file" id="importFile" accept="application/json" style="display:none">
       </div>
 
+      <div class="admin-card share-card" id="adm-share">
+        <h3>📱 Datos hacia otros dispositivos (móvil)</h3>
+        <p>Comparte la <b>configuración de conexión</b> (usuario, repositorio, rama y carpeta — <b>nunca el token</b>) dentro de la nube del taller. Otro dispositivo que abra la app se conectará <b>sin teclear nada</b>: se le preguntará una única vez y descargará los datos automáticamente en modo lectura hasta que añada su propio token.</p>
+        <div class="row-between" style="gap:12px;align-items:flex-start">
+          <div style="flex:1">
+            <label class="inline-check" style="margin-bottom:6px">
+              <input type="checkbox" id="shareConfigChk" ${(s.githubShared && s.githubShared.user) ? 'checked' : ''}>
+              Compartir configuración con otros dispositivos
+            </label>
+            <div class="form-row" style="margin:0">
+              <div class="form-group" style="margin:0"><label>WhatsApp de contacto (opcional)</label>
+                <input id="shareWhatsapp" inputmode="tel" placeholder="+58 412 0000000" value="${escape((s.githubShared&&s.githubShared.whatsapp)||'')}"></div>
+            </div>
+            ${ (s.githubShared && s.githubShared.user) ? `
+            <p class="muted small" style="margin-top:8px">
+              Compartiendo: <b>${escape(s.githubShared.user)}/${escape(s.githubShared.repo)}</b> · carpeta <code>${escape(s.githubShared.path)}</code>${s.githubSharedAt?` · desde ${fmtDateTime(s.githubSharedAt)}`:''}
+            </p>` : ''}
+          </div>
+        </div>
+        <button class="btn-primary" id="shareConfigBtn" style="margin-top:10px">Guardar preferencia</button>
+      </div>
+
+      <div class="admin-card danger-card" id="adm-reset">
+        <h3>⚠️ Zona peligrosa</h3>
+        <p>Reinicia <b>TODO el sistema</b> a su estado inicial de fábrica: reparaciones, fotos, audios, movimientos, catálogos, contraseña y ajustes. Esta acción no se puede deshacer.</p>
+        <label class="inline-check" style="margin-bottom:10px">
+          <input type="checkbox" id="resetWipeCloudChk">
+          Borrar TAMBIÉN la copia de la nube (GitHub) — requiere conexión y token
+        </label>
+        <button class="btn-primary btn-cancel" id="resetSystemBtn">Reiniciar todo el sistema</button>
+      </div>
+
       <div class="admin-card" id="adm-devices">
         <h3>Equipos disponibles</h3>
         <p>Aparecen como sugerencias al registrar una reparación</p>
@@ -1851,6 +1883,93 @@ const Views = (() => {
       reader.readAsText(f);
       // Permite reimportar el mismo archivo
       e.target.value = '';
+    };
+
+    // ===== v5: Compartir configuración con otros dispositivos =====
+    const shareBtn = document.getElementById('shareConfigBtn');
+    if(shareBtn) shareBtn.onclick = ()=>{
+      const chk = document.getElementById('shareConfigChk').checked;
+      const wa = document.getElementById('shareWhatsapp').value.trim();
+      if(chk){
+        const g = DB.settings.github;
+        if(!g.user || !g.repo){ UI.toast('Completa primero la Sincronización GitHub (usuario y repositorio)'); return; }
+        DB.setGithubShared({ user:g.user, repo:g.repo, branch:g.branch||'main', path:g.path||'taller-data', whatsapp:wa });
+        UI.toast('✓ Configuración compartida: el próximo dispositivo se conectará solo');
+        // Publicar config.json de inmediato si hay conexión y token
+        if(GitSync.cfgOk() && g.autoSync){ GitSync.schedulePush(); }
+        admin();
+      } else {
+        if(DB.settings.githubShared){
+          DB.setGithubShared(null);
+          UI.toast('Configuración ya no se comparte (la existente en la nube se quita al sincronizar)');
+          admin();
+        } else {
+          UI.toast('Sin cambios');
+        }
+      }
+    };
+
+    // ===== v5: RESET TOTAL del sistema (doble confirmación) =====
+    const resetBtn = document.getElementById('resetSystemBtn');
+    if(resetBtn) resetBtn.onclick = async ()=>{
+      const wipeCloud = document.getElementById('resetWipeCloudChk').checked;
+      const stats = DB.repairs.length, txs = DB.transactions.length;
+      // --- Confirmación 1: resumen de lo que se pierde ---
+      const ok1 = await UI.confirmDialog({
+        title:'Reiniciar todo el sistema',
+        message:`Se borrarán ${stats} reparación(es), ${txs} movimiento(s), las fotos, los audios, el inventario, la contraseña y todos los ajustes de ESTE dispositivo.${wipeCloud?' También se eliminará la copia guardada en GitHub (la nube quedará vacía).':''}\n\nEsta acción no se puede deshacer. ¿Continuar?`,
+        okText:'Sí, continuar', cancelText:'Cancelar', danger:true
+      });
+      if(!ok1) return;
+      // --- Confirmación 2: escribir la palabra REINICIAR ---
+      const ok2 = await new Promise(resolve=>{
+        const wrap = document.createElement('div');
+        wrap.className = 'confirm-overlay';
+        wrap.innerHTML = `
+          <div class="confirm-card" role="dialog" aria-modal="true">
+            <h3>Confirmación final</h3>
+            <p>Escribe la palabra <b>REINICIAR</b> para confirmar que entiendes que todos los datos se perderán para siempre.</p>
+            <input id="resetWordInput" class="reset-word-input" autocomplete="off" autocapitalize="characters" placeholder="Escribe REINICIAR">
+            <div class="btn-row" style="margin-top:12px">
+              <button class="btn-secondary" data-act="cancel">Cancelar</button>
+              <button class="btn-primary btn-cancel" data-act="ok" disabled id="resetWordOk">Reiniciar</button>
+            </div>
+          </div>`;
+        document.body.appendChild(wrap);
+        const inp = wrap.querySelector('#resetWordInput');
+        const okB = wrap.querySelector('#resetWordOk');
+        inp.addEventListener('input', ()=>{ okB.disabled = inp.value.trim().toUpperCase() !== 'REINICIAR'; });
+        const close = v => { wrap.remove(); resolve(v); };
+        wrap.addEventListener('click', e=>{
+          if(e.target===wrap){ close(false); return; }
+          const act = e.target.closest('[data-act]')?.dataset.act;
+          if(act==='ok' && !okB.disabled) close(true);
+          if(act==='cancel') close(false);
+        });
+      });
+      if(!ok2) return;
+
+      // --- Ejecutar ---
+      let cloudResult = null;
+      if(wipeCloud){
+        try{
+          UI.toast('Borrando la copia en GitHub…', 4000);
+          cloudResult = await GitSync.wipeRemote();
+        }catch(e){
+          const okRetry = await UI.confirmDialog({
+            title:'No se pudo borrar la nube',
+            message:'Error: '+e.message+'\n\n¿Reiniciar igualmente este dispositivo (la nube se borrará la próxima vez que funcione la conexión)?',
+            okText:'Sí, reiniciar local', cancelText:'Cancelar', danger:true
+          });
+          if(!okRetry) return;
+        }
+      }
+      DB.resetAll();
+      Auth.logout();
+      try{ GitSync.stopAutoPull(); }catch(_){}
+      UI.toast(cloudResult ? '✓ Sistema reiniciado · nube vacía ('+cloudResult.deleted+' archivos)' : '✓ Sistema reiniciado a su estado inicial', 3500);
+      // Recargar la app completa: estado limpio, primer acceso
+      setTimeout(()=>{ window.location.reload(); }, 1200);
     };
 
 

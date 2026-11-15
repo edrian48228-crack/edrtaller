@@ -36,3 +36,8 @@ const Auth = (() => {
     }
   };
 })();
+// v5: exponer Auth en window. Bootstrap (js/sync.js) y otros módulos entre
+// archivos <script> clásicos solo ven el scope global (window), no las
+// declaraciones const de otros scripts. Sin esto el bootstrap móvil nunca
+// pasaba de su guarda de "usuario logueado".
+window.Auth = Auth;

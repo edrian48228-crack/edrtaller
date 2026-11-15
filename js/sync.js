@@ -322,10 +322,28 @@ const GitSync = (() => {
         //  - lastSyncAt/lastSha: estado operativo local que cambia en cada
         //    push; si viajaran, el hash del índice cambiaría siempre y se
         //    re-subiría en cada sincronización.
-        github: { ...d.settings.github, token:'', lastSyncAt:null, lastSha:null }
+        //  - github (bloque local del PC) es config DEL dispositivo; en su
+        //    lugar viaja githubShared (sin token) para que otros móviles se
+        //    conecten sin teclear nada.
+        github: { ...d.settings.github, token:'', lastSyncAt:null, lastSha:null },
+        githubShared: d.settings.githubShared || null
       },
       transactions: d.transactions || [],
       repairIds: ids
+    }, null, 2);
+  }
+  // Archivo de configuración publicado para el bootstrap de otros
+  // dispositivos: se sirve por GitHub Pages (público, sin token) en
+  // <user>.github.io/<repo>/<path>/config.json. NUNCA incluye el token.
+  function buildConfigPayload(){
+    const d = DB.all;
+    const sh = d.settings.githubShared || {};
+    return JSON.stringify({
+      kind:'taller-config', schema:1,
+      user: sh.user || '', repo: sh.repo || '',
+      branch: sh.branch || 'main', path: sh.path || '',
+      whatsapp: sh.whatsapp || '',
+      createdAt: d.settings.githubSharedAt || null
     }, null, 2);
   }
 
@@ -393,6 +411,74 @@ const GitSync = (() => {
     GitLog.ok('repo', `Repo accesible: ${r.full_name} · rama por defecto: ${r.default_branch}`);
     GitLog.info('ruta', `Base de datos: ${basePath()}/  (index.json + repairs/Rxxxx.json)`);
     return true;
+  }
+
+  // ---------- RESET: olvidar cachés de sincronización ----------
+  // Lo llama DB.resetAll(). Deja el módulo como recién cargado:
+  // sin hashes, sin dirty, sin tombstones (en memoria Y en localStorage).
+  function resetCaches(){
+    lastHashes = {}; knownDirty = new Set(); knownDeleted = new Set();
+    knownDirtyTx = new Set(); knownDeletedTx = new Set();
+    rateLimitedUntil = 0;
+    try{
+      localStorage.removeItem('taller_gh_hashes');
+      localStorage.removeItem('taller_gh_dirty_repairs');
+      localStorage.removeItem('taller_gh_dirty_tx');
+      localStorage.removeItem('taller_gh_deleted');
+      localStorage.removeItem('taller_gh_deleted_tx');
+    }catch(_){}
+    GitLog.clear();
+    GitLog.warn('reset', 'Cachés de sincronización reiniciadas en este dispositivo');
+  }
+
+  // ---------- RESET: borrar TODO el contenido de la nube ----------
+  // Elimina index.json, config.json y todos los repairs/*.json de la
+  // carpeta base. NO toca el código de la app (Pages) ni nada fuera de
+  // basePath(). Requiere token con permiso Contents:read/write.
+  async function wipeRemote(onProgress = ()=>{}){
+    if(!cfgOk()) throw new Error('Configura la conexión (usuario, repo y token) para borrar la nube');
+    GitLog.warn('wipe', 'Borrando TODA la base de datos del repositorio…');
+    // 1) Listar todo bajo la carpeta base (recursivo por seguridad extra:
+    //    solo borramos archivos, no carpetas de la app).
+    const seen = new Set();
+    const targets = [];
+    const roots = [basePath()];
+    let guard = 0;
+    while(roots.length && guard++ < 10){
+      const dir = roots.shift();
+      const items = await listDir(dir);
+      for(const it of items){
+        const p = (dir.replace(/\/$/,'') + '/' + it.name);
+        if(it.type === 'dir'){
+          // GitHub devuelve "dir" solo con ?ref= ; listDir lo maneja
+          if(!seen.has(p)){ seen.add(p); roots.push(p); }
+        } else if(it.type === 'file'){
+          if(!seen.has(p)){ seen.add(p); targets.push(p); }
+        }
+      }
+    }
+    // 2) index.json y config.json viven directamente en la base
+    for(const extra of [indexFile(), basePath()+'/config.json']){
+      if(!targets.includes(extra)) targets.push(extra);
+    }
+    GitLog.info('wipe', `${targets.length} archivo(s) para eliminar en ${basePath()}/`);
+    let done = 0, failed = 0;
+    for(const path of targets){
+      const f = await getFile(path);
+      if(!f.sha){ done++; onProgress(done, targets.length, path); continue; } // ya no existe
+      try{
+        await deleteFile(path, f.sha);
+        done++;
+      }catch(e){
+        GitLog.warn('wipe', path+' → '+e.message);
+        failed++;
+      }
+      onProgress(done, targets.length, path);
+    }
+    // 3) Olvidar estado local de sincronización (sin tocar DB)
+    resetCaches();
+    GitLog.ok('wipe', `Nube vaciada: ${done} eliminado(s)${failed?`, ${failed} fallo(s)`:''}`);
+    return { deleted: done, failed };
   }
 
   async function pushAll(opts={}){
@@ -533,11 +619,101 @@ const GitSync = (() => {
         }catch(_){}
       }
 
+      // 5) Publicar config.json para el bootstrap de otros dispositivos.
+      // Solo si el usuario activó compartir configuración (githubShared):
+      // ese archivo se sirve por GitHub Pages y permite que un móvil nuevo
+      // se conecte sin teclear nada (el token NUNCA viaja aquí).
+      const shared = DB.settings.githubShared;
+      if(shared && shared.user && shared.repo){
+        try{
+          const cfgTxt = buildConfigPayload();
+          const cfgPath = basePath() + '/config.json';
+          const cfgRemote = await getFile(cfgPath);
+          const cfgH = await sha256(cfgTxt);
+          const remoteCfgH = cfgRemote.content ? await sha256(cfgRemote.content) : null;
+          if(remoteCfgH !== cfgH){
+            await putFile(cfgPath, cfgTxt, cfgRemote.sha, 'taller: publicar config.json para nuevos dispositivos');
+            GitLog.ok('config', 'config.json publicado para nuevos dispositivos');
+          }
+        }catch(e){
+          GitLog.warn('config', 'No se pudo publicar config.json: '+e.message);
+        }
+      }
+
       GitLog.ok('done', `Sincronización completa: ${reallyPushed} subida(s), ${deletes.length} eliminada(s)${failed?`, ${failed} fallida(s) (se reintentarán)`:''}`);
       return { pushed: reallyPushed+skippedSame, deleted: deletes.length, failed };
     } finally {
       busy = false;
     }
+  }
+
+  // ---------- Pull READ-ONLY sin token (bootstrap móvil) ----------
+  // Descarga index.json + repairs/*.json desde raw.githubusercontent.com
+  // (repo público, sin autenticación). No usa la API REST → no gasta cuota
+  // ni requiere token. El autoPull normal seguirá usando la API cuando
+  // haya token; sin token, este modo es la única fuente de descarga.
+  async function pullReadOnly(){
+    const c = g();
+    if(!c.user || !c.repo) throw new Error('Falta usuario/repositorio');
+    const branch = c.branch || 'main';
+    const base = (c.path||'taller-data').replace(/^\/+|\/+$/g,'');
+    const raw = p => `https://raw.githubusercontent.com/${c.user}/${c.repo}/${branch}/${base}/${p}`;
+    GitLog.info('pull-ro', `Descarga sin token desde raw.githubusercontent.com (${base})…`);
+    // 1) index.json
+    let idxData = null;
+    try{
+      const r = await fetch(raw('index.json'), { cache:'no-store' });
+      if(r.ok){
+        idxData = await r.json();
+        GitLog.ok('pull-ro', 'index.json descargado');
+      } else {
+        GitLog.info('pull-ro', 'index.json → ' + r.status + ' (¿primera vez?)');
+        return { pulled: 0 };
+      }
+    }catch(e){ throw new Error('Sin conexión con raw.githubusercontent: ' + (e.message||e)); }
+    if(!idxData || !Array.isArray(idxData.repairIds)) return { pulled: 0 };
+    // 2) repairs/ — en modo lectura inicial solo bajamos las que no
+    //    tenemos localmente (o todas si no hay ninguna). El polling
+    //    posterior reutiliza el mismo mecanismo pero por SHAs de la API
+    //    cuando hay token; sin token, comparamos por id.
+    const localIds = new Set(DB.repairs.map(r=>r.id));
+    const toFetch = idxData.repairIds.filter(id => !localIds.has(id));
+    let fetched = 0;
+    const remoteRepairs = [];
+    for(const id of toFetch){
+      try{
+        const r = await fetch(raw('repairs/' + encodeURIComponent(id) + '.json'), { cache:'no-store' });
+        if(!r.ok){ GitLog.warn('pull-ro', id + ' → ' + r.status); continue; }
+        const parsed = await r.json();
+        if(parsed && parsed.repair){ remoteRepairs.push(parsed.repair); fetched++; }
+      }catch(e){ GitLog.warn('pull-ro', id + ': ' + (e.message||e)); }
+    }
+    // 3) Aplicar: fusión no destructiva — las locales NUNCA se borran aquí
+    //    (mismo criterio anti-pérdida que pullAll: lo local pendiente gana).
+    if(remoteRepairs.length || localIds.size === 0){
+      const merged = [...DB.repairs];
+      const byId = new Map(merged.map(r=>[r.id,r]));
+      for(const rr of remoteRepairs) byId.set(rr.id, rr);
+      DB.replaceAll({
+        schemaVersion: Math.max(idxData.schemaVersion||1, DB.all.schemaVersion||1),
+        settings: { ...(idxData.settings||{}), github: DB.settings.github, githubShared: idxData.settings && idxData.settings.githubShared ? idxData.settings.githubShared : DB.settings.githubShared },
+        transactions: (idxData.transactions||[]),
+        counter: Math.max(idxData.counter||1, DB.all.counter||1),
+        txCounter: Math.max(idxData.txCounter||1, DB.all.txCounter||1),
+        repairs: [...byId.values()]
+      });
+      // Catálogos: fusión local ∪ remoto (igual que pullAll)
+      const s = DB.settings;
+      DB.updateSettings({
+        deviceTypes: [...new Set([...(s.deviceTypes||[]), ...((idxData.settings&&idxData.settings.deviceTypes)||[])])].sort((a,b)=>a.localeCompare(b,'es')),
+        productTypes: [...new Set([...(s.productTypes||[]), ...((idxData.settings&&idxData.settings.productTypes)||[])])].sort((a,b)=>a.localeCompare(b,'es'))
+      });
+    }
+    // 4) Caché de hashes: sin SHA remoto no podemos marcarlas como
+    //    sincronizadas — quedarán "dirty" para el próximo push CON token,
+    //    que es lo correcto (así el token nuevo las confirma en el repo).
+    GitLog.ok('pull-ro', `Modo lectura: ${fetched} reparación(es) descargada(s)`);
+    return { pulled: fetched };
   }
 
   async function pullAll(opts={}){
@@ -726,6 +902,7 @@ const GitSync = (() => {
       // SIEMPRE después, venga o no bloque github en el remoto.
       const localSettings = DB.settings;
       const localGithub = { ...(localSettings.github || {}) };
+      const localShared = localSettings.githubShared || null;
       const localCatalogs = {
         deviceTypes: localSettings.deviceTypes || [],
         productTypes: localSettings.productTypes || []
@@ -743,7 +920,13 @@ const GitSync = (() => {
       const mergedProducts = new Set([...(DB.settings.productTypes||[]), ...localCatalogs.productTypes]);
       DB.updateSettings({
         deviceTypes: [...mergedDevices].sort((a,b)=>a.localeCompare(b,'es')),
-        productTypes: [...mergedProducts].sort((a,b)=>a.localeCompare(b,'es'))
+        productTypes: [...mergedProducts].sort((a,b)=>a.localeCompare(b,'es')),
+        // githubShared: gana el que exista. Prioridad: remoto (fue subido
+        // por el PC que comparte) → local (este dispositivo comparte).
+        // Si ninguno comparte, null. Es lo que permite que un dispositivo
+        // nuevo se conecte sin teclear nada.
+        githubShared: (DB.settings.githubShared || localShared),
+        githubSharedAt: DB.settings.githubSharedAt || localSettings.githubSharedAt || null
       });
       // Restaurar la configuración de GitHub COMPLETA de este dispositivo
       // (el remoto nunca la debe pisar: token y datos de conexión son locales).
@@ -929,6 +1112,10 @@ const GitSync = (() => {
     getPendingPush, getPendingPull,
     markDeleted, markDeletedTx,
     startAutoPull, stopAutoPull, autoPullNow: autoPullTick,
+    // Reset total (v5):
+    resetCaches, wipeRemote,
+    // Bootstrap móvil (v5):
+    pullReadOnly,
     // Compatibilidad con código viejo:
     pushLegacy: pushAll
   };
@@ -1032,3 +1219,131 @@ const LocalFile = (() => {
 
 })();
 window.LocalFile = LocalFile;
+
+// =============================================================
+// Bootstrap v5 — conexión automática en dispositivos nuevos
+//
+// El PC "publica" su configuración (usuario/repo/rama/carpeta) en
+// <base>/config.json, servida por GitHub Pages. Un móvil NUEVO que
+// abre la app por primera vez:
+//   1. Lee config.json desde la propia URL de Pages (mismo origen,
+//      sin token y sin API: 1 GET público).
+//   2. Pregunta UNA vez: "¿Conectar este dispositivo con la nube
+//      del taller?".
+//   3. Si acepta: adopta user/repo/branch/path (token vacío → modo
+//      solo lectura vía Pages/raw) y sincroniza.
+// Con eso el usuario del móvil no teclea NADA en Admin. Cuando
+// quiera editar datos, crea su propio token y lo pega; hasta
+// entonces todo le llega como lectura.
+// =============================================================
+const Bootstrap = (() => {
+  const ASKED_KEY = 'taller_bootstrap_asked';
+  const CONFIG_URL = 'taller-data/config.json'; // relativa al despliegue
+
+  function alreadyConfigured(){
+    const gh = DB.settings.github || {};
+    return !!(gh.user && gh.repo && (gh.token || gh.enabled));
+  }
+  function wasAsked(){
+    try{ return localStorage.getItem(ASKED_KEY) === '1'; }catch(_){ return true; }
+  }
+  function markAsked(){
+    try{ localStorage.setItem(ASKED_KEY, '1'); }catch(_){}
+  }
+
+  // Descubre el config.json publicado. Probamos la ruta relativa al
+  // despliegue actual (GitHub Pages sirve el repo tal cual), con un
+  // par de variantes por si la app está en / o en /<repo>/.
+  async function fetchSharedConfig(){
+    const paths = [
+      CONFIG_URL,
+      './' + CONFIG_URL
+    ];
+    for(const p of paths){
+      try{
+        GitLog.info('boot', 'Buscando configuración compartida: ' + p);
+        const resp = await fetch(p, { cache:'no-store' });
+        if(!resp.ok){ GitLog.info('boot', p + ' → ' + resp.status); continue; }
+        const txt = await resp.text();
+        const cfg = JSON.parse(txt);
+        if(cfg && cfg.kind === 'taller-config' && cfg.user && cfg.repo){
+          return cfg;
+        }
+      }catch(e){
+        GitLog.info('boot', p + ' no disponible (' + (e.message||e) + ')');
+      }
+    }
+    return null;
+  }
+
+  function askAdopt(cfg){
+    return new Promise(resolve=>{
+      const wrap = document.createElement('div');
+      wrap.className = 'confirm-overlay';
+      wrap.innerHTML = `
+        <div class="confirm-card" role="dialog" aria-modal="true">
+          <h3>☁️ Conectar con la nube del taller</h3>
+          <p style="line-height:1.55">
+            Este dispositivo puede sincronizarse con los datos del taller
+            <b>${UI.escape(cfg.user)}/${UI.escape(cfg.repo)}</b>.<br><br>
+            Se descargarán todas las reparaciones, fotos, audios y movimientos
+            y se mantendrán actualizados automáticamente.<br><br>
+            <span class="muted small">Podrás editarlos cuando añadas tu propio token de GitHub
+            (Administración → Sincronización GitHub). Sin token, este dispositivo
+            funciona en modo lectura.</span>
+          </p>
+          <div class="btn-row">
+            <button class="btn-secondary" data-act="no">No, usar por separado</button>
+            <button class="btn-primary" data-act="yes">Sí, sincronizar ahora</button>
+          </div>
+        </div>`;
+      document.body.appendChild(wrap);
+      const close = v => { wrap.remove(); resolve(v); };
+      wrap.addEventListener('click', e=>{
+        if(e.target===wrap){ close(false); return; }
+        const act = e.target.closest('[data-act]')?.dataset.act;
+        if(act==='yes') close(true);
+        if(act==='no') close(false);
+      });
+    });
+  }
+
+  async function run(){
+    // Solo en el primer arranque, sin configuración propia.
+    if(alreadyConfigured() || wasAsked()) return;
+    // (window.Auth se asigna en js/auth.js desde v5.)
+    if(!Auth.isLoggedIn()) return; // tras el login, en el init de App
+    try{
+      const cfg = await fetchSharedConfig();
+      if(!cfg){ markAsked(); return; }
+      markAsked();
+      GitLog.ok('boot', 'Configuración del taller detectada: ' + cfg.user + '/' + cfg.repo);
+      const adopt = await askAdopt(cfg);
+      if(!adopt) return;
+      // Adoptar la configuración compartida (SIN token: modo lectura).
+      DB.updateGithub({
+        enabled: true,
+        user: cfg.user, repo: cfg.repo,
+        branch: cfg.branch || 'main',
+        path: cfg.path || 'taller-data',
+        token: '', autoSync: true
+      });
+      DB.setGithubShared({
+        user: cfg.user, repo: cfg.repo, branch: cfg.branch || 'main',
+        path: cfg.path || 'taller-data', whatsapp: cfg.whatsapp || ''
+      });
+      GitLog.ok('boot', 'Dispositivo conectado en modo lectura. Bajando datos…');
+      try{ UI.toast('Conectado con la nube del taller. Descargando datos…', 3500); }catch(_){}
+      // Descarga inicial: GitHub Pages sirve el repo estático. Para el
+      // índice y las reparaciones usamos raw.githubusercontent (público,
+      // sin token) — pullReadOnly() ya lo maneja.
+      await GitSync.pullReadOnly();
+      try{ App.refresh(); }catch(_){}
+    }catch(e){
+      GitLog.warn('boot', 'Bootstrap: ' + (e.message||e));
+    }
+  }
+
+  return { run };
+})();
+window.Bootstrap = Bootstrap;
