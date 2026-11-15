@@ -1,17 +1,16 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1783684004276,
   "repair": {
-    "clientName": "Antonio Caballero",
-    "clientPhone": "55824943",
+    "clientName": "Antonio caballero",
+    "clientPhone": "55824943-21380049",
     "clientEmail": null,
     "device": "Teléfono móvil",
-    "brand": "Motorola",
+    "brand": "Motorola ",
     "model": "Mc36f",
     "serial": null,
     "issue": "Boton de encendido en mal estado. Display despegado",
-    "status": "delivered",
+    "status": "pending",
     "notes": "Sangregorio entre 17 y 18 norte. Edif 174 de maura. Ultima paso escalera",
     "dueDate": null,
     "price": 3300,
@@ -32,15 +31,14 @@
     ],
     "id": "R0005",
     "createdAt": 1781112771472,
-    "updatedAt": 1781224110218,
+    "updatedAt": 1781112993065,
     "clientPhones": [
-      "55824943",
-      "21380049"
+      "55824943-21380049"
     ],
     "clientAddress": null,
     "clientIdNumber": null,
-    "warrantyDays": 10,
-    "deliveredAt": 1781175001651,
+    "warrantyDays": null,
+    "deliveredAt": null,
     "parts": []
   }
 }
