@@ -1,0 +1,63 @@
+{
+  "id": "/",
+  "name": "Taller de Reparaciones",
+  "short_name": "Taller",
+  "description": "Gestión de reparaciones electrónicas con respaldo automático en la nube: fotos del equipo, audio de aceptación, inventario, ventas y ganancias. Funciona sin conexión.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "background_color": "#0f0f0f",
+  "theme_color": "#1a1a1a",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["productivity", "business", "utilities"],
+  "launch_handler": { "client_mode": "navigate-existing" },
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nueva reparación",
+      "short_name": "Reparación",
+      "description": "Registrar un equipo nuevo para reparar",
+      "url": "./index.html?v=new",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Nueva venta",
+      "short_name": "Venta",
+      "description": "Registrar una venta de producto",
+      "url": "./index.html?v=sale",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Buscar",
+      "short_name": "Buscar",
+      "description": "Buscar reparaciones por cliente, equipo o teléfono",
+      "url": "./index.html?v=search",
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/narrow-1.png",
+      "sizes": "540x1140",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Lista de reparaciones con fotos y estado"
+    },
+    {
+      "src": "screenshots/narrow-2.png",
+      "sizes": "540x1140",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Compras, ventas, stock y ganancias"
+    }
+  ]
+}
