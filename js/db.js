@@ -1,6 +1,23 @@
-// Almacén con localStorage + migración compatible hacia adelante.
+// Almacén — v41: IndexedDB (almacenamiento real del dispositivo) con
+// migración automática desde localStorage y fallback si IndexedDB falla.
+//
+// POR QUÉ: el DB completo (incluidas las fotos de las reparaciones en
+// base64) vivía en localStorage, que en Android Chrome tiene un tope
+// duro de ~5 MB aunque el teléfono tenga 128 GB libres. Resultado:
+// "Almacenamiento lleno" con el móvil vacío y datos perdidos en silencio.
+// IndexedDB usa la cuota real del origen (~GB) y junto con
+// navigator.storage.persist() Android no la borra bajo presión.
+//
+// API pública idéntica a la v1 (DB.save, DB.repairs, ...): ni views.js
+// ni sync.js cambian. Las funciones son síncronas igual que antes —
+// el guardado físico a IndexedDB es async en segundo plano, y la
+// fuente de verdad inmediata es `data` en memoria: un fallo de disco
+// nunca pierde el dato de la sesión actual, se reintenta en el
+// siguiente save().
 const DB = (() => {
   const KEY = 'taller_db_v1';
+  const IDB_NAME = 'taller-db';
+  const IDB_STORE = 'kv';
   const SCHEMA_VERSION = 9;
   const DEFAULT_DEVICES = [
     'Televisor','Smart TV','Monitor','Laptop','PC de escritorio','Tablet',
@@ -25,7 +42,7 @@ const DB = (() => {
       logoPreset: 'tools',
       requirePassword: true,
       passwordHash: null,
-      securityQuestions: [], // [{q, aHash}]
+      securityQuestions: [],
       deviceTypes: DEFAULT_DEVICES.slice(),
       productTypes: DEFAULT_PRODUCTS.slice(),
       defaultWarrantyDays: 30,
@@ -42,27 +59,206 @@ const DB = (() => {
     counter: 1,
     txCounter: 1
   };
-  let data = load();
-  migrate();
 
-  function load(){
-    try{
-      const raw = localStorage.getItem(KEY);
-      if(!raw) return structuredClone(defaults);
-      const p = JSON.parse(raw);
-      return deepMerge(structuredClone(defaults), p);
-    }catch(e){ return structuredClone(defaults); }
+  // ---- Estado ----
+  let data = loadInitial();        // fuente de verdad inmediata (RAM)
+  let backend = 'idb';             // 'idb' | 'local' — cuál se usa de verdad
+  let idbReady = null;             // promesa de la conexión IndexedDB
+  let flushing = false;            // hay un guardado físico en curso
+  let flushScheduled = false;      // hay uno programado
+  let lastPersistFail = 0;         // anti-spam del banner de error
+
+  // ---------- Motor IndexedDB ----------
+  function idb(){
+    if(idbReady) return idbReady;
+    idbReady = new Promise((resolve,reject)=>{
+      let req;
+      try{ req = indexedDB.open(IDB_NAME, 1); }
+      catch(e){ reject(e); return; }
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore(IDB_STORE); };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error || new Error('IndexedDB error'));
+      req.onblocked = ()=>reject(new Error('IndexedDB bloqueada'));
+    });
+    idbReady.catch(()=>{ idbReady = null; });
+    return idbReady;
   }
-  function deepMerge(target, src){
-    for(const k in src){
-      if(src[k] && typeof src[k]==='object' && !Array.isArray(src[k])){
-        target[k] = deepMerge(target[k]||{}, src[k]);
-      } else if(src[k] !== undefined){
-        target[k] = src[k];
-      }
+  function idbGet(key){
+    return idb().then(db=>new Promise((res,rej)=>{
+      const tx = db.transaction(IDB_STORE,'readonly');
+      const rq = tx.objectStore(IDB_STORE).get(key);
+      rq.onsuccess = ()=>res(rq.result);
+      rq.onerror = ()=>rej(rq.error);
+    }));
+  }
+  function idbPut(key, val){
+    return idb().then(db=>new Promise((res,rej)=>{
+      const tx = db.transaction(IDB_STORE,'readwrite');
+      const rq = tx.objectStore(IDB_STORE).put(val, key);
+      rq.onsuccess = ()=>res(true);
+      rq.onerror = ()=>rej(rq.error);
+    }));
+  }
+
+  // ---------- Carga inicial ----------
+  // Orden: IndexedDB (nuevo) → localStorage (migración) → defaults.
+  // En el arranque real esto es síncrono desde localStorage (instantáneo)
+  // y, si hay datos más nuevos en IndexedDB, se aplican en cuanto llega.
+  function loadInitial(){
+    // 1) si localStorage ya tiene datos, partir de ahí (arranque síncrono)
+    let ls = null;
+    try{ ls = localStorage.getItem(KEY); }catch(_){}
+    if(ls){
+      try{
+        const p = JSON.parse(ls);
+        if(p && typeof p === 'object' && (p.repairs || p.settings)) return deepMerge(structuredClone(defaults), p);
+      }catch(_){}
     }
-    return target;
+    // 2) sin localStorage: defaults vacíos; IndexedDB puede traer datos después
+    return structuredClone(defaults);
   }
+
+  // Migración inicial localStorage → IndexedDB (una sola vez):
+  // si IndexedDB está vacía y localStorage tiene datos, se copian y se
+  // marca la migración. El borrado de localStorage se hace solo cuando
+  // IndexedDB ya confirmó el guardado (nunca antes).
+  async function migrateInitial(){
+    let idbData = null;
+    try{ idbData = await idbGet(KEY); }catch(_){ backend = 'local'; }
+    if(idbData && typeof idbData === 'object'){
+      // IndexedDB ya tiene datos: es la fuente de verdad (es más grande
+      // que localStorage: contiene fotos que localStorage no pudo guardar).
+      data = deepMerge(structuredClone(defaults), idbData);
+      backend = 'idb';
+      migrate();
+      return;
+    }
+    // IndexedDB vacía: si localStorage tenía datos, migrarlos.
+    let ls = null;
+    try{ ls = localStorage.getItem(KEY); }catch(_){}
+    if(ls && backend === 'idb'){
+      try{
+        const p = JSON.parse(ls);
+        if(p && typeof p === 'object' && (p.repairs || p.settings)){
+          const ok = await idbPut(KEY, p).catch(()=>false);
+          if(ok){
+            backend = 'idb';
+            // localStorage se limpia SOLO tras confirmar IndexedDB.
+            try{ localStorage.removeItem(KEY); }catch(_){}
+          }
+        }
+      }catch(_){}
+    }
+    // Pedir almacenamiento persistente: Android no podrá borrar los
+    // datos de la app bajo presión de espacio (el aviso "liberar espacio"
+    // de Chrome ya no la incluye).
+    try{
+      if(navigator.storage && navigator.storage.persist){
+        navigator.storage.persist().then(()=>{}).catch(()=>{});
+      }
+    }catch(_){}
+  }
+
+  // ---------- Guardado ----------
+  // Guarda siempre en RAM (fuente de verdad inmediata) y programa el
+  // guardado físico. sync/push usa RAM: la subida nunca se bloquea por
+  // el estado del disco.
+  function save(triggerSync=true){
+    // 1) RAM: inmediato e infalible.
+    // 2) Físico: programado con debounce (mínimo 300ms tras el último cambio).
+    scheduleFlush();
+    if(triggerSync && window.GitSync && DB.settings.github.enabled && DB.settings.github.autoSync){
+      window.GitSync.schedulePush();
+    }
+    if(window.LocalFile && window.LocalFile.hasHandle()){
+      window.LocalFile.scheduleWrite();
+    }
+  }
+
+  function scheduleFlush(){
+    if(backend === 'local'){
+      // Modo fallback (sin IndexedDB): guardar directo a localStorage.
+      flushToLocal();
+      return;
+    }
+    if(flushing){
+      flushScheduled = true;
+      return;
+    }
+    flushing = true;
+    setTimeout(()=>doFlush(), 300);
+  }
+  async function doFlush(){
+    flushScheduled = false;
+    const snapshot = JSON.stringify(data);
+    try{
+      await idbPut(KEY, snapshot);
+      flushing = false;
+      if(flushScheduled) scheduleFlush();
+    }catch(e){
+      flushing = false;
+      // IndexedDB falló: probar localStorage como salvavidas.
+      const lsOk = flushToLocal();
+      if(!lsOk) showStorageBanner(e);
+      if(flushScheduled) scheduleFlush();
+    }
+  }
+  function flushToLocal(){
+    try{ localStorage.setItem(KEY, JSON.stringify(data)); return true; }
+    catch(e){ return false; }
+  }
+
+  function showStorageBanner(err){
+    // Anti-spam: un aviso por minuto como máximo.
+    const now = Date.now();
+    if(now - lastPersistFail < 60000) return;
+    lastPersistFail = now;
+    console.warn('Error guardando en disco', err);
+    try{
+      const banner = document.getElementById('storageWarn');
+      if(!banner){
+        const b = document.createElement('div');
+        b.id = 'storageWarn';
+        b.className = 'storage-warn';
+        b.innerHTML = '⚠ <b>No se pudo guardar en el dispositivo</b> — los datos siguen activos en memoria y la sincronización con la nube no se ha detenido. '
+          + 'Exporta una copia (Administración → Copia local) mientras revisas el almacenamiento del navegador.';
+        (document.body || document.documentElement).appendChild(b);
+      }
+    }catch(_){}
+  }
+
+  // ---------- persist() + aviso de quota real ----------
+  // Se ejecuta tras el login (no en cada save): pide almacenamiento
+  // persistente y, si el navegador lo deniega y la cuota libre es
+  // realmente pequeña, muestra el aviso — no antes, no con 128 GB libres.
+  async function ensurePersistent(){
+    try{
+      if(navigator.storage && navigator.storage.persist){
+        await navigator.storage.persist();
+      }
+    }catch(_){}
+    // Diagnóstico (visible en la consola y en Administración):
+    try{
+      if(navigator.storage && navigator.storage.estimate){
+        const est = await navigator.storage.estimate();
+        DB.storageInfo = {
+          usage: est.usage || 0,
+          quota: est.quota || 0,
+          usageMB: +(est.usage/1048576).toFixed(1),
+          quotaGB: +(est.quota/1073741824).toFixed(1),
+          persistent: !!(navigator.storage && navigator.storage.persisted && navigator.storage.persisted())
+        };
+      }
+    }catch(_){}
+    return DB.storageInfo || null;
+  }
+
+  // Arranque: migrar IndexedDB/localStorage en cuanto el módulo carga.
+  // La UI no espera esto: parte de loadInitial() (síncrono) y los datos
+  // de IndexedDB (si son más frescos) se aplican en milisegundos.
+  migrateInitial();
+  if(data && data.repairs) migrate();
+
   function migrate(){
     let changed = false;
     for(const r of data.repairs){
@@ -86,7 +282,6 @@ const DB = (() => {
     if(!Array.isArray(data.transactions)){ data.transactions = []; changed = true; }
     if(typeof data.txCounter !== 'number'){ data.txCounter = 1; changed = true; }
     for(const t of data.transactions){
-      // Migración: campos de coste para sacar ganancia/inversión
       if(t.unitCost === undefined){ t.unitCost = null; changed = true; }
       if(t.costTotal === undefined){ t.costTotal = null; changed = true; }
     }
@@ -103,40 +298,12 @@ const DB = (() => {
     if(!data.settings.creator){ data.settings.creator = { phone:'', whatsapp:'' }; changed = true; }
     if(data.settings.logo === undefined){ data.settings.logo = null; changed = true; }
     if(!data.settings.logoPreset){ data.settings.logoPreset = 'tools'; changed = true; }
-      if(!Array.isArray(data.settings.securityQuestions)){ data.settings.securityQuestions = []; changed = true; }
-    // Bloque de configuración compartida (viaja en index.json para que otros
-    // dispositivos se conecten sin rellenar nada; NUNCA contiene el token).
+    if(!Array.isArray(data.settings.securityQuestions)){ data.settings.securityQuestions = []; changed = true; }
     if(!data.settings.githubShared || typeof data.settings.githubShared!=='object'){
       data.settings.githubShared = null; changed = true;
     }
     data.schemaVersion = SCHEMA_VERSION;
     if(changed) save(false);
-  }
-  function save(triggerSync=true){
-    try{ localStorage.setItem(KEY, JSON.stringify(data)); }
-    catch(e){
-      // localStorage lleno (QuotaExceededError): si esto falla en silencio,
-      // el usuario cree que guardó pero el dato se pierde al cerrar la app.
-      // Avisamos de forma clara y permanente mientras dure el problema.
-      console.warn('localStorage lleno', e);
-      try{
-        const banner = document.getElementById('storageWarn');
-        if(!banner){
-          const b = document.createElement('div');
-          b.id = 'storageWarn';
-          b.className = 'storage-warn';
-          b.innerHTML = '⚠ <b>Almacenamiento lleno</b> — los últimos cambios no se guardaron en el dispositivo. '
-            + 'Exporta una copia (Administración → Copia local) y borra reparaciones antiguas con fotos grandes.';
-          (document.body || document.documentElement).appendChild(b);
-        }
-      }catch(_){}
-    }
-    if(triggerSync && window.GitSync && DB.settings.github.enabled && DB.settings.github.autoSync){
-      window.GitSync.schedulePush();
-    }
-    if(window.LocalFile && window.LocalFile.hasHandle()){
-      window.LocalFile.scheduleWrite();
-    }
   }
 
   async function sha256(text){
@@ -159,6 +326,9 @@ const DB = (() => {
     get settings(){ return data.settings; },
     get repairs(){ return data.repairs; },
     get transactions(){ return data.transactions; },
+    get backend(){ return backend; },           // 'idb' | 'local'
+    storageInfo: null,                          // lo llena ensurePersistent()
+    ensurePersistent,
     save, sha256, norm,
     async hashAnswer(ans){ return sha256(norm(ans)); },
     setSecurityQuestions(list){
@@ -189,11 +359,8 @@ const DB = (() => {
     },
     get githubShared(){ return data.settings.githubShared || null; },
     // RESET TOTAL — restaura TODO el sistema a su estado inicial de fábrica.
-    // Borra las 10 claves de localStorage que usa la app (datos, hashes de
-    // sincronización, tombstones, borradores, sesión...) y reconstruye los
-    // valores por defecto. Conserva solo el ID de dispositivo si se pide
-    // (keeps nothing by default). Tras llamar esto, el módulo DB queda
-    // funcional en memoria con datos vacíos.
+    // Borra las claves de localStorage, el DB de IndexedDB y reconstruye
+    // los valores por defecto.
     resetAll({ keepDeviceId = false } = {}){
       const devId = keepDeviceId ? localStorage.getItem('taller_device_id') : null;
       const keys = [
@@ -204,10 +371,19 @@ const DB = (() => {
       for(const k of keys){
         try{ localStorage.removeItem(k); }catch(_){}
       }
+      // IndexedDB también (v41): datos y eventual residuo de migración.
+      try{
+        idb().then(db=>new Promise(res=>{
+          const tx = db.transaction(IDB_STORE,'readwrite');
+          const rq = tx.objectStore(IDB_STORE).clear();
+          rq.onsuccess = ()=>res(true);
+          rq.onerror = ()=>res(false);
+        })).catch(()=>{});
+      }catch(_){}
       data = structuredClone(defaults);
       data.schemaVersion = SCHEMA_VERSION;
       if(devId){ try{ localStorage.setItem('taller_device_id', devId); }catch(_){} }
-      try{ localStorage.setItem(KEY, JSON.stringify(data)); }catch(_){}
+      scheduleFlush();
       // Notificar al módulo de sincronización para que olvide hashes/tombstones
       if(window.GitSync && typeof window.GitSync.resetCaches === 'function'){
         try{ window.GitSync.resetCaches(); }catch(_){}
@@ -276,11 +452,9 @@ const DB = (() => {
     findRepair(id){ return data.repairs.find(r=>r.id===id); },
     // === Transacciones (ventas y compras) ===
     addTransaction(t){
-      // Respetar un id ya asignado (importaciones/merge) y garantizar
-      // unicidad: si el id propuesto ya existe, buscar el siguiente libre.
       let id = (t && typeof t.id === 'string' && t.id) ? t.id : null;
       const taken = new Set(data.transactions.map(x=>x.id));
-      if(id && taken.has(id)) id = null; // id repetido: generar otro
+      if(id && taken.has(id)) id = null;
       if(!id){
         do { id = 'T' + String(data.txCounter++).padStart(4,'0'); }
         while(taken.has(id));
@@ -379,7 +553,7 @@ const DB = (() => {
           m.sold += q;
           const cost = t.costTotal!=null ? Number(t.costTotal) : 0;
           m.earned += (total - cost);
-          m.invested += cost; // inversión asociada a esa venta
+          m.invested += cost;
         }
       }
       for(const r of data.repairs){
@@ -397,7 +571,6 @@ const DB = (() => {
         map[n].stock = map[n].purchased - map[n].sold - map[n].usedInRepairs;
         map[n].min = mins[n]||0;
       }
-      // incluir productos con min configurado aunque no tengan movimientos
       for(const n in mins){ ensure(n).min = mins[n]; }
       return map;
     },
@@ -455,7 +628,6 @@ const DB = (() => {
           return isFinite(n)&&n>m ? n : m;
         }, 0);
         if(maxTx+1 > (data.txCounter||1)) data.txCounter = maxTx+1;
-        // Fusionar listas de equipos/productos sin duplicar
         if(p.settings){
           if(Array.isArray(p.settings.deviceTypes)){
             for(const d of p.settings.deviceTypes){
@@ -480,4 +652,15 @@ const DB = (() => {
       }catch(e){ console.warn(e); return { ok:false, error:e.message }; }
     }
   };
+
+  function deepMerge(target, src){
+    for(const k in src){
+      if(src[k] && typeof src[k]==='object' && !Array.isArray(src[k])){
+        target[k] = deepMerge(target[k]||{}, src[k]);
+      } else if(src[k] !== undefined){
+        target[k] = src[k];
+      }
+    }
+    return target;
+  }
 })();

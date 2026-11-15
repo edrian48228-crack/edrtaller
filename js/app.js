@@ -195,6 +195,10 @@ const App = (() => {
       }
       showLogin();
     }
+    // v41: sesión viva (app ya abierta) → asegurar almacenamiento persistente.
+    if(Auth.isLoggedIn()){
+      try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
+    }
   }
   async function tryLogin(){
     const pass = document.getElementById('loginPass').value;
@@ -204,6 +208,9 @@ const App = (() => {
       document.getElementById('loginPass').value = '';
       applyBrand();
       showApp();
+      // v41: pedir almacenamiento persistente tras entrar (IndexedDB ya no
+      // aparece en "liberar espacio" de Android y refresca el diagnóstico).
+      try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
     } else {
       err.classList.remove('hidden');
     }

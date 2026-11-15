@@ -15,7 +15,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Taller" />
-  <link rel="stylesheet" href="css/styles.css?v=38" />
+  <link rel="stylesheet" href="css/styles.css?v=41" />
 </head>
 <body>
   <!-- LOGIN -->
@@ -115,35 +115,86 @@
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="js/db.js?v=38"></script>
-  <script src="js/sync.js?v=38"></script>
-  <script src="js/auth.js?v=38"></script>
-  <script src="js/install.js?v=38"></script>
-  <script src="js/ui.js?v=38"></script>
-  <script src="js/views.js?v=38"></script>
-  <script src="js/app.js?v=38"></script>
+  <script src="js/db.js?v=41"></script>
+  <script src="js/sync.js?v=41"></script>
+  <script src="js/auth.js?v=41"></script>
+  <script src="js/install.js?v=41"></script>
+  <script src="js/ui.js?v=41"></script>
+  <script src="js/views.js?v=41"></script>
+  <script src="js/app.js?v=41"></script>
   <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').then(reg => {
-          reg.update();
-          if (reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
-          reg.addEventListener('updatefound', () => {
-            const nw = reg.installing;
+    // ====== Service Worker + auto-actualización (v40) ======
+    // La app se actualiza sola: al abrir, al recuperar conexión, al
+    // volver al primer plano (lo típico en móvil) y cada 6 h con la app
+    // abierta. El SW nuevo se activa de inmediato (SKIP_WAITING), borra
+    // la caché vieja, recarga y muestra el aviso de versión nueva.
+    (function(){
+      if (!('serviceWorker' in navigator)) return;
+      var hadController = !!navigator.serviceWorker.controller;
+      var reloaded = false;
+
+      navigator.serviceWorker.addEventListener('controllerchange', function(){
+        // Solo recarga si este documento YA estaba controlado por un SW
+        // anterior (evita el flash de la primera instalación) y no está
+        // en medio de rellenar un formulario.
+        if (reloaded || !hadController) return;
+        var busy = document.querySelector('.modal:not(.hidden) form, .form-sheet:not(.hidden) form, form.dirty');
+        if (busy){
+          try{ UI.toast('✓ Nueva versión descargada. Se aplicará al cerrar esta pantalla.'); }catch(_){}
+          return;
+        }
+        reloaded = true;
+        try{ UI.toast('⟳ Nueva versión — actualizando…'); }catch(_){}
+        setTimeout(function(){ location.reload(); }, 700);
+      });
+
+      window.addEventListener('load', function(){
+        var regPromise = navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(function(reg){
+          if (reg.waiting && navigator.serviceWorker.controller) reg.waiting.postMessage('SKIP_WAITING');
+          reg.addEventListener('updatefound', function(){
+            var nw = reg.installing;
             if (!nw) return;
-            nw.addEventListener('statechange', () => {
-              if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-                nw.postMessage('SKIP_WAITING');
-              }
+            nw.addEventListener('statechange', function(){
+              if (nw.state === 'installed' && navigator.serviceWorker.controller) nw.postMessage('SKIP_WAITING');
             });
           });
-        }).catch(()=>{});
-        let reloaded = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          if (reloaded) return; reloaded = true; window.location.reload();
+          return reg;
+        }).catch(function(){ return null; });
+        regPromise.then(function(reg){ if (reg) reg.update(); });
+
+        function checkForUpdate(reg){ if (reg) reg.update(); }
+        // Sondeo: al recuperar red / al volver al primer plano / cada 6 h
+        window.addEventListener('online', function(){ regPromise.then(checkForUpdate); });
+        document.addEventListener('visibilitychange', function(){
+          if (document.visibilityState === 'visible') regPromise.then(checkForUpdate);
         });
+        setInterval(function(){ regPromise.then(checkForUpdate); }, 6*60*60*1000);
+
+        // Aviso "actualizada": compara la versión del SW activo con la
+        // última que vio este dispositivo (localStorage).
+        var tries = 0;
+        function checkVersion(){
+          var sw = navigator.serviceWorker.controller;
+          if (!sw){
+            if (++tries < 5) setTimeout(checkVersion, 1500);
+            return;
+          }
+          var seen = null;
+          try{ seen = localStorage.getItem('edr_sw_v'); }catch(_){}
+          var onv = function(e){
+            if (!e.data || e.data.type !== 'VERSION') return;
+            navigator.serviceWorker.removeEventListener('message', onv);
+            if (e.data.v && seen && String(seen) !== String(e.data.v)){
+              try{ UI.toast('✓ App actualizada a la versión ' + e.data.v); }catch(_){}
+            }
+            try{ localStorage.setItem('edr_sw_v', String(e.data.v)); }catch(_){}
+          };
+          navigator.serviceWorker.addEventListener('message', onv);
+          sw.postMessage('GET_VERSION');
+        }
+        checkVersion();
       });
-    }
+    })();
   </script>
 </body>
 </html>

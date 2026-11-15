@@ -56,27 +56,44 @@ const Install = (() => {
     deferredPrompt = null;
   }
 
+  // Icono (trazos del mismo estilo que los logos de la app)
+  const PHONE_SVG = `
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="6.5" y="2.5" width="11" height="19" rx="3"/>
+  <path d="M10.5 18.5h3"/>
+  <path d="M12 7.2v5.3"/>
+  <path d="M9.8 10.3 12 12.5l2.2-2.2"/>
+  <path d="M9.8 15.2h4.4"/>
+</svg>`.trim();
+
   function openInstallGuide(){
     const ios = isIOS();
-    const steps = ios ? `
-      <ol class="install-steps">
-        <li>Abre esta página en <b>Safari</b> si no lo estás usando.</li>
-        <li>Pulsa el botón <b>Compartir</b> <span class="ios-share">(cuadrado con flecha hacia arriba)</span>.</li>
-        <li>Baja y toca <b>“Añadir a pantalla de inicio”</b>.</li>
-        <li>Confirma con <b>“Añadir”</b>. El ícono aparecerá como una app más.</li>
-      </ol>` : `
-      <ol class="install-steps">
-        <li>Abre el <b>menú del navegador</b> (⋮ o ⋮ según el navegador).</li>
-        <li>Toca <b>“Instalar aplicación”</b> o <b>“Añadir a pantalla de inicio”</b>.</li>
-        <li>Confirma. La app se abrirá a pantalla completa, sin barra del navegador.</li>
-      </ol>`;
+    const steps = ios ? [
+      { t:'Abre esta página en <b>Safari</b>', d:'Si la abriste en otro navegador, copia la dirección y ábrela en Safari.' },
+      { t:'Pulsa el botón <b>Compartir</b>', d:'El cuadrado con la flecha hacia arriba, en el centro abajo.' },
+      { t:'Toca <b>«Añadir a pantalla de inicio»</b>', d:'Baja en la lista hasta encontrarlo.' },
+      { t:'Confirma con <b>«Añadir»</b>', d:'El icono quedará junto al resto de tus apps.' }
+    ] : [
+      { t:'Abre el <b>menú del navegador</b>', d:'Los tres puntos ⋮ (arriba a la derecha en Chrome).' },
+      { t:'Toca <b>«Instalar aplicación»</b>', d:'O «Añadir a pantalla de inicio», según el navegador.' },
+      { t:'Confirma con <b>«Instalar»</b>', d:'Se abrirá a pantalla completa, sin barra del navegador.' }
+    ];
+    const rows = steps.map((s,i)=>`
+      <div class="istep">
+        <span class="istep-n">${i+1}</span>
+        <div class="istep-body">
+          <div class="istep-t">${s.t}</div>
+          <div class="istep-d">${s.d}</div>
+        </div>
+      </div>`).join('');
     UI.openModal(`
-      <h2 style="margin:0 0 6px;font-size:20px">Instalar en el móvil</h2>
-      <p class="muted small" style="margin:0 0 12px">Una vez instalada funciona <b>sin conexión</b> y se actualiza sola cuando haya internet. Tus datos se guardan en el dispositivo y se sincronizan con GitHub automáticamente.</p>
-      ${steps}
-      <div class="btn-row" style="margin-top:14px">
-        <button class="btn-primary" id="installGo">Entendido</button>
-      </div>`);
+      <div class="ihead">
+        <div class="ihead-ico">${PHONE_SVG}</div>
+        <h2>Instalar en tu móvil</h2>
+        <p class="ihead-sub"><b>${ios ? 'iPhone · Safari' : 'Android · Chrome y similares'}</b> — una vez instalada funciona <b>sin conexión</b> y se actualiza sola cuando haya internet. Tus datos se guardan en el dispositivo y se sincronizan con GitHub automáticamente.</p>
+      </div>
+      <div class="isteps">${rows}</div>
+      <button class="btn-primary btn-install" id="installGo" style="width:100%;margin-top:14px">Entendido</button>`);
     document.getElementById('installGo').onclick = ()=> UI.closeModal();
   }
 
@@ -90,17 +107,17 @@ const Install = (() => {
     const card = document.createElement('div');
     card.id = 'installCard';
     card.className = 'admin-card install-card';
+    // Tarjeta centrada (v39): icono → título → subtítulo → botón ancho → enlace
     card.innerHTML = `
-      <div class="row-between">
-        <div style="flex:1;min-width:0">
-          <h3>📲 Instalar la app</h3>
-          <p>${ios
-            ? 'Instálala en tu pantalla de inicio para usarla sin navegador y sin conexión.'
-            : 'Instálala como aplicación: icono propio, pantalla completa y uso <b>offline</b>.'}</p>
-        </div>
-        <button class="btn-primary btn-install" id="installBtn">Instalar</button>
-      </div>
-      <button class="install-how" id="installHow">¿Cómo se instala${ios?' en iPhone':''}?</button>`;
+      <div class="install-hero">
+        <div class="ih-ico">${PHONE_SVG}</div>
+        <h3 class="ih-title">${ios ? 'Instalar en tu iPhone' : 'Instalar la app'}</h3>
+        <p class="ih-sub">${ios
+          ? 'Añádela a tu pantalla de inicio para usarla sin navegador y sin conexión.'
+          : 'Icono propio, pantalla completa y uso <b>sin conexión</b>.'}</p>
+        <button class="btn-primary btn-install" id="installBtn">Instalar ahora</button>
+        <button class="install-how" id="installHow">¿Cómo se instala? — paso a paso</button>
+      </div>`;
     view.prepend(card);
     const btn = document.getElementById('installBtn');
     if(btn) btn.onclick = ()=>{ if(deferredPrompt) promptInstall(); else openInstallGuide(); };
