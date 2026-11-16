@@ -1,5 +1,5 @@
 // =============================================================
-// Service Worker — v40 (auto-actualización robusta)
+// Service Worker — v50 (auto-actualización robusta)
 //
 // - Precarga individual (no addAll todo-o-nada): un 404 puntual
 //   (p. ej. un screenshot) ya no tumba la actualización entera.
@@ -12,8 +12,8 @@
 //   las peticiones con ?v= encuentren su copia offline aunque
 //   la caché la guardara sin query.
 // =============================================================
-const CACHE = 'taller-v41';
-const VERSION = '41';
+const CACHE = 'taller-v50';
+const VERSION = '50';
 const ASSETS = [
   './','./index.html','./manifest.json',
   './css/styles.css',

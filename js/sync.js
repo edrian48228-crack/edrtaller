@@ -485,6 +485,7 @@ const GitSync = (() => {
     if(!cfgOk()) throw new Error('Configuración incompleta');
     if(busy) { GitLog.warn('cola','Operación en curso, omitida'); return; }
     busy = true;
+    const c2 = g();   // captura de configuración para el paso de compartir
     const onProgress = opts.onProgress || (()=>{});
     try{
       const repairs = DB.repairs.slice();
@@ -620,10 +621,21 @@ const GitSync = (() => {
       }
 
       // 5) Publicar config.json para el bootstrap de otros dispositivos.
-      // Solo si el usuario activó compartir configuración (githubShared):
-      // ese archivo se sirve por GitHub Pages y permite que un móvil nuevo
-      // se conecte sin teclear nada (el token NUNCA viaja aquí).
-      const shared = DB.settings.githubShared;
+      // v48: si este dispositivo tiene conexión completa y aún NO comparte,
+      // se activa el compartir automáticamente tras un push exitoso — así
+      // cualquier dispositivo nuevo se conecta sin teclear nada (el token
+      // NUNCA viaja aquí). Se puede desactivar en Administración.
+      let shared = DB.settings.githubShared;
+      if(!shared && c2 && c2.user && c2.repo){
+        try{
+          DB.setGithubShared({
+            user: c2.user, repo: c2.repo, branch: c2.branch || 'main',
+            path: basePath(), whatsapp: ''
+          });
+          shared = DB.settings.githubShared;
+          GitLog.ok('config', 'Configuración compartida automáticamente: otros dispositivos podrán conectarse sin teclear nada');
+        }catch(e){ GitLog.warn('config', 'No se pudo activar compartir: '+e.message); }
+      }
       if(shared && shared.user && shared.repo){
         try{
           const cfgTxt = buildConfigPayload();
@@ -652,11 +664,17 @@ const GitSync = (() => {
   // (repo público, sin autenticación). No usa la API REST → no gasta cuota
   // ni requiere token. El autoPull normal seguirá usando la API cuando
   // haya token; sin token, este modo es la única fuente de descarga.
+  //
+  // ANTI-PÉRDIDA (v48): este pull aplica las MISMAS protecciones que
+  // pullAll — antes sustituía las transacciones locales por las del
+  // índice remoto (perdiendo ventas/compras sin subir de este
+  // dispositivo), ignoraba los tombstones (lo borrado reaparecía) y
+  // pisaba contraseña/settings locales con los del repo.
   async function pullReadOnly(){
     const c = g();
     if(!c.user || !c.repo) throw new Error('Falta usuario/repositorio');
     const branch = c.branch || 'main';
-    const base = (c.path||'taller-data').replace(/^\/+|\/+$/g,'');
+    const base = (c.path||'taller-data').replace(/^\/+|\/+$/g,'').replace(/\.json$/i,'');
     const raw = p => `https://raw.githubusercontent.com/${c.user}/${c.repo}/${branch}/${base}/${p}`;
     GitLog.info('pull-ro', `Descarga sin token desde raw.githubusercontent.com (${base})…`);
     // 1) index.json
@@ -676,8 +694,10 @@ const GitSync = (() => {
     //    tenemos localmente (o todas si no hay ninguna). El polling
     //    posterior reutiliza el mismo mecanismo pero por SHAs de la API
     //    cuando hay token; sin token, comparamos por id.
+    //    TOMBSTONES: lo borrado en este dispositivo NUNCA se vuelve a
+    //    descargar aunque el índice remoto (viejo) aún lo liste.
     const localIds = new Set(DB.repairs.map(r=>r.id));
-    const toFetch = idxData.repairIds.filter(id => !localIds.has(id));
+    const toFetch = idxData.repairIds.filter(id => !localIds.has(id) && !knownDeleted.has(id));
     let fetched = 0;
     const remoteRepairs = [];
     for(const id of toFetch){
@@ -685,34 +705,102 @@ const GitSync = (() => {
         const r = await fetch(raw('repairs/' + encodeURIComponent(id) + '.json'), { cache:'no-store' });
         if(!r.ok){ GitLog.warn('pull-ro', id + ' → ' + r.status); continue; }
         const parsed = await r.json();
-        if(parsed && parsed.repair){ remoteRepairs.push(parsed.repair); fetched++; }
+        if(parsed && parsed.repair) remoteRepairs.push(parsed.repair);
+        else fetched++; // descargada pero inválida: no se adopta
       }catch(e){ GitLog.warn('pull-ro', id + ': ' + (e.message||e)); }
     }
-    // 3) Aplicar: fusión no destructiva — las locales NUNCA se borran aquí
+    fetched += remoteRepairs.length;
+    // 3) TRANSACCIONES: fusión no destructiva por id (igual que pullAll).
+    //    Las locales SIEMPRE se conservan (el remoto no conoce las que
+    //    aún no subimos) y las borradas aquí (tombstones) no reaparecen.
+    //    v48 ANTI-COLISIÓN: id local == id remoto con contenido distinto →
+    //    la local se renombra con sufijo, nunca se pisa (pérdida cero).
+    let pulledTx = Array.isArray(idxData.transactions) ? idxData.transactions.slice() : [];
+    const remoteTxMap = new Map(pulledTx.map(t=>[t.id, t]));
+    for(const t of DB.transactions){
+      if(knownDeletedTx.has(t.id)) continue;
+      const clash = remoteTxMap.get(t.id);
+      if(!clash){
+        pulledTx.push(t);
+        if(!knownDirtyTx.has(t.id)) knownDirtyTx.add(t.id); // asegurar su subida
+      } else {
+        const same = (clash.createdAt === t.createdAt)
+          && (String(clash.product||'') === String(t.product||''))
+          && (Number(clash.total||0) === Number(t.total||0));
+        if(same) continue; // ya está en el repo idéntica
+        const suffix = (()=>{
+          try{ return localStorage.getItem('taller_device_id') || 'DV'; }
+          catch(_){ return 'DV'; }
+        })();
+        let newId = t.id + '-' + suffix;
+        const allIds = new Set(pulledTx.map(x=>x.id));
+        let n = 2;
+        while(allIds.has(newId)){ newId = t.id + '-' + suffix + n; n++; }
+        t.id = newId;
+        pulledTx.push(t);
+        knownDirtyTx.add(newId);
+        GitLog.warn('tx-clash', `Transacción local ${t.id} renombrada para no pisar la remota con mismo id`);
+      }
+    }
+    pulledTx = pulledTx.filter(t => !knownDeletedTx.has(t.id));
+    // 4) Aplicar: fusión no destructiva — las locales NUNCA se borran aquí
     //    (mismo criterio anti-pérdida que pullAll: lo local pendiente gana).
-    if(remoteRepairs.length || localIds.size === 0){
-      const merged = [...DB.repairs];
-      const byId = new Map(merged.map(r=>[r.id,r]));
-      for(const rr of remoteRepairs) byId.set(rr.id, rr);
+    //    Ediciones locales más nuevas que el remoto ganan (updatedAt).
+    const localById = new Map(DB.repairs.map(r=>[r.id,r]));
+    let keptLocal = 0;
+    const mergedRepairs = remoteRepairs.map(rr=>{
+      const loc = localById.get(rr.id);
+      if(loc && (knownDirty.has(rr.id) || (loc.updatedAt||0) > (rr.updatedAt||0))){ keptLocal++; return loc; }
+      return rr;
+    });
+    // Locales no presentes en el remoto (nuevas o borradas allá y no aquí):
+    // se conservan SIEMPRE (pendiente de subir). Excepto tombstones.
+    const remoteIdsNow = new Set(remoteRepairs.map(r=>r.id));
+    let addedLocal = 0;
+    for(const [id, loc] of localById){
+      if(!remoteIdsNow.has(id) && !knownDeleted.has(id)){ mergedRepairs.push(loc); addedLocal++; }
+    }
+    // Settings: el remoto pisa catálogos/ajustes compartidos, pero la
+    // contraseña, preguntas y la config de GitHub son de ESTE dispositivo.
+    const localSettings = DB.settings;
+    const localGithub = { ...(localSettings.github||{}) };
+    const localShared = localSettings.githubShared || null;
+    const localCatalogs = {
+      deviceTypes: localSettings.deviceTypes || [],
+      productTypes: localSettings.productTypes || []
+    };
+    if(remoteRepairs.length || idxData.repairIds.length || localIds.size === 0){
       DB.replaceAll({
         schemaVersion: Math.max(idxData.schemaVersion||1, DB.all.schemaVersion||1),
-        settings: { ...(idxData.settings||{}), github: DB.settings.github, githubShared: idxData.settings && idxData.settings.githubShared ? idxData.settings.githubShared : DB.settings.githubShared },
-        transactions: (idxData.transactions||[]),
+        settings: { ...(idxData.settings||{}), github: localGithub, githubShared: (idxData.settings && idxData.settings.githubShared) ? idxData.settings.githubShared : localShared },
+        transactions: pulledTx,
         counter: Math.max(idxData.counter||1, DB.all.counter||1),
         txCounter: Math.max(idxData.txCounter||1, DB.all.txCounter||1),
-        repairs: [...byId.values()]
+        repairs: mergedRepairs
+      });
+      // Restaurar settings puramente locales que el repo no debe pisar
+      // (una config remota "sin contraseña" no desactiva la de este móvil).
+      DB.updateSettings({
+        passwordHash: DB.settings.passwordHash || localSettings.passwordHash,
+        requirePassword: DB.settings.requirePassword !== undefined ? DB.settings.requirePassword : localSettings.requirePassword,
+        securityQuestions: (DB.settings.securityQuestions && DB.settings.securityQuestions.length)
+          ? DB.settings.securityQuestions : localSettings.securityQuestions
       });
       // Catálogos: fusión local ∪ remoto (igual que pullAll)
       const s = DB.settings;
       DB.updateSettings({
-        deviceTypes: [...new Set([...(s.deviceTypes||[]), ...((idxData.settings&&idxData.settings.deviceTypes)||[])])].sort((a,b)=>a.localeCompare(b,'es')),
-        productTypes: [...new Set([...(s.productTypes||[]), ...((idxData.settings&&idxData.settings.productTypes)||[])])].sort((a,b)=>a.localeCompare(b,'es'))
+        deviceTypes: [...new Set([...(s.deviceTypes||[]), ...localCatalogs.deviceTypes, ...((idxData.settings&&idxData.settings.deviceTypes)||[])])].sort((a,b)=>a.localeCompare(b,'es')),
+        productTypes: [...new Set([...(s.productTypes||[]), ...localCatalogs.productTypes, ...((idxData.settings&&idxData.settings.productTypes)||[])])].sort((a,b)=>a.localeCompare(b,'es'))
       });
     }
-    // 4) Caché de hashes: sin SHA remoto no podemos marcarlas como
+    if(keptLocal>0 || addedLocal>0 || knownDirtyTx.size>0){
+      GitLog.info('pull-ro', `Conservadas ${keptLocal+addedLocal} reparación(es) local(es) pendientes de subir`);
+    }
+    // 5) Caché de hashes: sin SHA remoto no podemos marcarlas como
     //    sincronizadas — quedarán "dirty" para el próximo push CON token,
     //    que es lo correcto (así el token nuevo las confirma en el repo).
-    GitLog.ok('pull-ro', `Modo lectura: ${fetched} reparación(es) descargada(s)`);
+    saveHashCache();
+    GitLog.ok('pull-ro', `Modo lectura: ${fetched} reparación(es) descargada(s), ${pulledTx.length} transacción(es) en el índice`);
     return { pulled: fetched };
   }
 
@@ -800,12 +888,38 @@ const GitSync = (() => {
       // --- Preservar transacciones locales no subidas ---
       // Las transacciones viven en index.json. Si hay transacciones locales nuevas
       // que aún no se subieron, el index.json remoto no las tiene. Las fusionamos.
+      // v48 ANTI-COLISIÓN: si una local tiene el MISMO id que una remota pero
+      // contenido distinto (dos dispositivos generaron "T0001" antes del fix
+      // de sufijo), la local se RENOMBRA con sufijo nuevo en vez de ser pisada
+      // — nunca se pierde una venta/compra por choque de IDs.
       if(pulledTx.length > 0 || DB.transactions.length > 0){
-        const remoteTxIds = new Set(pulledTx.map(t=>t.id));
+        const remoteTxMap = new Map(pulledTx.map(t=>[t.id, t]));
+        const keptLocal = [];
         for(const t of DB.transactions){
-          if(!remoteTxIds.has(t.id) && !knownDeletedTx.has(t.id)){
+          if(knownDeletedTx.has(t.id)) continue;
+          const clash = remoteTxMap.get(t.id);
+          if(!clash){
             pulledTx.push(t);
             if(!knownDirtyTx.has(t.id)) knownDirtyTx.add(t.id); // asegurar su subida
+          } else {
+            // ¿La remota es EXACTAMENTE esta misma tx (ya subida)? → la remota manda.
+            const same = (clash.createdAt === t.createdAt)
+              && (String(clash.product||'') === String(t.product||''))
+              && (Number(clash.total||0) === Number(t.total||0));
+            if(same) continue;
+            // Colisión real: renombrar la local con sufijo de dispositivo.
+            const suffix = (()=>{
+              try{ return localStorage.getItem('taller_device_id') || 'DV'; }
+              catch(_){ return 'DV'; }
+            })();
+            let newId = t.id + '-' + suffix;
+            const allIds = new Set([...pulledTx.map(x=>x.id), ...keptLocal.map(x=>x.id)]);
+            let n = 2;
+            while(allIds.has(newId)){ newId = t.id + '-' + suffix + n; n++; }
+            t.id = newId;
+            pulledTx.push(t);
+            knownDirtyTx.add(newId); // subirá con su nuevo id
+            GitLog.warn('tx-clash', `Transacción local ${t.id} renombrada para no pisar la remota con mismo id`);
           }
         }
       } else {
@@ -987,6 +1101,15 @@ const GitSync = (() => {
     }
     clearTimeout(pushTimer);
     pushTimer = setTimeout(async ()=>{
+      // GitHub exige PUT/DELETE EN SERIE: si hay un push/pull en curso
+      // (busy), se aplaza este intento en lugar de solaparlo (evita los
+      // conflictos 409/422 que la API devuelve con operaciones paralelas).
+      if(busy){
+        GitLog.info('auto','Operación en curso — subida aplazada 2,5 s');
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(async ()=>{ await pushAll(); }, 2500);
+        return;
+      }
       try{
         toast('Subiendo cambios a la nube…');
         const res = await pushAll();

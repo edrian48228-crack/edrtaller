@@ -49,8 +49,13 @@ const DB = (() => {
       productMinStock: {},
       creator: { phone: '', whatsapp: '' },
       github: {
-        enabled: false, user: '', repo: '', branch: 'main',
-        path: 'taller-data.json', token: '',
+        // v48: sincronización ACTIVADA por defecto — el usuario solo
+        // teclea usuario/repo/token una vez y el motor completo
+        // (push + pull + compartir con otros dispositivos) ya está
+        // encendido. Sin datos de conexión cfgOk() sigue siendo false
+        // (no molesta hasta configurar).
+        enabled: true, user: '', repo: '', branch: 'main',
+        path: 'taller-data', token: '',
         autoSync: true, lastSyncAt: null, lastSha: null
       }
     },
@@ -64,8 +69,9 @@ const DB = (() => {
   let data = loadInitial();        // fuente de verdad inmediata (RAM)
   let backend = 'idb';             // 'idb' | 'local' — cuál se usa de verdad
   let idbReady = null;             // promesa de la conexión IndexedDB
-  let flushing = false;            // hay un guardado físico en curso
-  let flushScheduled = false;      // hay uno programado
+  let flushTimer = null;           // timer del guardado físico (debounce)
+  let loaded = false;              // la carga inicial desde disco terminó
+  let dirty = false;               // hay cambios en RAM aún no escritos
   let lastPersistFail = 0;         // anti-spam del banner de error
 
   // ---------- Motor IndexedDB ----------
@@ -122,15 +128,94 @@ const DB = (() => {
   // si IndexedDB está vacía y localStorage tiene datos, se copian y se
   // marca la migración. El borrado de localStorage se hace solo cuando
   // IndexedDB ya confirmó el guardado (nunca antes).
+  // NOTA: IndexedDB puede contener el DB como STRING (formato del
+  // flush) o como OBJETO (migración antigua) — se aceptan ambos y se
+  // normaliza a string. Si solo se aceptara objeto, cada reinicio
+  // arrancaría con el DB vacío: contraseña y token borrados en cada
+  // apertura de la app (bug v41 corregido aquí).
   async function migrateInitial(){
+    let raw = null;
+    try{ raw = await idbGet(KEY); }catch(_){ backend = 'local'; }
     let idbData = null;
-    try{ idbData = await idbGet(KEY); }catch(_){ backend = 'local'; }
-    if(idbData && typeof idbData === 'object'){
-      // IndexedDB ya tiene datos: es la fuente de verdad (es más grande
-      // que localStorage: contiene fotos que localStorage no pudo guardar).
-      data = deepMerge(structuredClone(defaults), idbData);
+    if(raw != null){
+      if(typeof raw === 'string'){
+        try{ idbData = JSON.parse(raw); }catch(_){ idbData = null; }
+      } else if(typeof raw === 'object'){
+        idbData = raw;
+      }
+    }
+    if(idbData && typeof idbData === 'object' && (idbData.repairs || idbData.settings)){
+      // IndexedDB ya tiene datos. DESEMPATE de frescura de TRES fuentes:
+      //   1. IndexedDB (fuente principal, con fotos)
+      //   2. respaldo completo de localStorage (síncrono, sin fotos si no cupo)
+      //   3. respaldo VITAL de localStorage (settings: token/contraseña)
+      // Si un respaldo es MÁS NUEVO que IndexedDB (la app murió antes del
+      // put async), su configuración gana — si no, el token recién cambiado
+      // se perdería y habría que re-teclearlo.
+      let lsTs = 0;
+      try{ lsTs = parseInt(localStorage.getItem(KEY+'_ts')||'0',10) || 0; }catch(_){}
+      const idbTs = parseInt(idbData._savedAt||'0',10) || 0;
+      let lsParsed = null;
+      if(lsTs > idbTs){
+        try{ lsParsed = JSON.parse(localStorage.getItem(KEY)||'null'); }catch(_){}
+      }
+      // El vital lleva su propio _ts y SOLO settings: si es más nuevo que
+      // todo lo demás, sus settings (token) pisan al final.
+      let vitalTs = 0, vitalSettings = null;
+      try{
+        vitalTs = parseInt(localStorage.getItem(KEY+'_vital_ts')||'0',10) || 0;
+        if(vitalTs > 0){
+          const vp = JSON.parse(localStorage.getItem(KEY+'_vital')||'null');
+          if(vp && vp.settings) vitalSettings = vp.settings;
+        }
+      }catch(_){}
+      if(lsParsed && (lsParsed.repairs || lsParsed.settings) && lsParsed.settings && idbData.settings){
+        // Fusión campo a campo: el respaldo nuevo manda, pero sin descartar
+        // fotos de reparaciones que solo estén en IndexedDB.
+        const winner = (lsTs >= idbTs) ? lsParsed : idbData;
+        const loser  = (lsTs >= idbTs) ? idbData : lsParsed;
+        const merged = deepMerge(structuredClone(defaults), loser);
+        // settings: gana el respaldo nuevo (token/contraseña/config frescos)
+        merged.settings = deepMerge(merged.settings, winner.settings || {});
+        // github: config del dispositivo — gana SIEMPRE el más nuevo
+        merged.settings.github = { ...(loser.settings||{}).github, ...(winner.settings||{}).github };
+        // reparaciones: union por id, la versión del ganador pisa
+        const byId = new Map();
+        for(const r of (loser.repairs||[])) byId.set(r.id, r);
+        for(const r of (winner.repairs||[])) byId.set(r.id, r);
+        merged.repairs = [...byId.values()];
+        // transacciones igual
+        const txById = new Map();
+        for(const t of (loser.transactions||[])) txById.set(t.id, t);
+        for(const t of (winner.transactions||[])) txById.set(t.id, t);
+        merged.transactions = [...txById.values()];
+        merged.counter = Math.max(loser.counter||1, winner.counter||1);
+        merged.txCounter = Math.max(loser.txCounter||1, winner.txCounter||1);
+        data = merged;
+      } else {
+        data = deepMerge(structuredClone(defaults), idbData);
+      }
+      // El vital (si es lo más nuevo) pisa settings: es el respaldo de
+      // emergencia del último cambio de configuración antes de cerrar.
+      if(vitalSettings && vitalTs >= Math.max(idbTs, lsTs)){
+        data.settings = deepMerge(data.settings, vitalSettings);
+        if(vitalSettings.github) data.settings.github = { ...data.settings.github, ...vitalSettings.github };
+      }
       backend = 'idb';
       migrate();
+      // Normalizar a IndexedDB SIN avanzar _savedAt: este save no añade
+      // contenido nuevo (consolida la fusión); si avanzara el reloj, un
+      // vital más reciente quedaría "viejo" en el próximo arranque.
+      const persistTs = Math.max(idbTs, lsTs, vitalTs);   // frescura del origen
+      try{ delete data._savedAt; }catch(_){}
+      try{
+        const snap = JSON.stringify({ ...data, _savedAt: persistTs });
+        idbPut(KEY, snap).catch(()=>{});
+      }catch(_){}
+      // El respaldo vital ya está consolidado en IndexedDB: limpiar.
+      try{ localStorage.removeItem(KEY+'_vital'); localStorage.removeItem(KEY+'_vital_ts'); }catch(_){}
+      // localStorage limpio tras confirmar en IndexedDB... el flush es async,
+      // así que el respaldo se mantiene hasta el próximo arranque limpio.
       return;
     }
     // IndexedDB vacía: si localStorage tenía datos, migrarlos.
@@ -140,14 +225,33 @@ const DB = (() => {
       try{
         const p = JSON.parse(ls);
         if(p && typeof p === 'object' && (p.repairs || p.settings)){
-          const ok = await idbPut(KEY, p).catch(()=>false);
+          // Se guarda el STRING tal cual (mismo formato que doFlush).
+          const ok = await idbPut(KEY, ls).catch(()=>false);
           if(ok){
             backend = 'idb';
             // localStorage se limpia SOLO tras confirmar IndexedDB.
-            try{ localStorage.removeItem(KEY); }catch(_){}
+            try{ localStorage.removeItem(KEY); localStorage.removeItem(KEY+'_vital'); }catch(_){}
           }
         }
       }catch(_){}
+    }
+    // IndexedDB vacía y sin respaldo completo: usar el respaldo VITAL
+    // (settings con token/contraseña) si existe — el resto lo trae el
+    // autoPull desde GitHub. Esto es lo que evita re-teclear el token
+    // cuando el DB grande no llegó a commitear antes de cerrar la app.
+    if(!idbData){
+      let vital = null;
+      try{ vital = localStorage.getItem(KEY+'_vital'); }catch(_){}
+      if(vital){
+        try{
+          const p = JSON.parse(vital);
+          if(p && p.settings){
+            data = deepMerge(structuredClone(defaults), p);
+            migrate();
+            // No borrar el respaldo vital: IndexedDB aún no confirmó nada.
+          }
+        }catch(_){}
+      }
     }
     // Pedir almacenamiento persistente: Android no podrá borrar los
     // datos de la app bajo presión de espacio (el aviso "liberar espacio"
@@ -157,6 +261,10 @@ const DB = (() => {
         navigator.storage.persist().then(()=>{}).catch(()=>{});
       }
     }catch(_){}
+    // Carga inicial terminada: ya se puede escribir en disco con
+    // seguridad (los flush aplazados por el gate se ejecutan ahora).
+    loaded = true;
+    if(dirty) scheduleFlush();
   }
 
   // ---------- Guardado ----------
@@ -164,9 +272,37 @@ const DB = (() => {
   // guardado físico. sync/push usa RAM: la subida nunca se bloquea por
   // el estado del disco.
   function save(triggerSync=true){
+    dirty = true;
     // 1) RAM: inmediato e infalible.
     // 2) Físico: programado con debounce (mínimo 300ms tras el último cambio).
+    //    NO se escribe en disco hasta que la carga inicial (migrateInitial)
+    //    ha terminado: si no, un flush con los datos vacíos de arranque
+    //    puede PISAR el DB real del disco (carrera de arranque v41).
     scheduleFlush();
+    // 3) Respaldo síncrono en localStorage: la configuración vital
+    //    (token, contraseña, conexión — unos KB) nunca se pierde aunque
+    //    la app muera antes del debounce. Si el DB completo cabe, mejor.
+    //    try/catch POR RAMA: si el snapshot grande no cabe (quota), el
+    //    vital DEBE escribirse igual — un catch único se saltaría el
+    //    respaldo de configuración con un QuotaExceededError.
+    if(loaded){
+      const now = Date.now();
+      const snapshot = JSON.stringify({ ...data, _savedAt: now });
+      if(snapshot.length < 4500000){          // < ~4.5MB: cabe en localStorage
+        try{
+          localStorage.setItem(KEY, snapshot);
+          localStorage.setItem(KEY+'_ts', String(now));
+        }catch(_){}
+      }
+      // DB grande (fotos): respaldar solo settings (la parte vital).
+      if(snapshot.length >= 4500000){
+        try{
+          const vital = JSON.stringify({ schemaVersion: data.schemaVersion, settings: data.settings, repairs: [], transactions: [], counter: data.counter, txCounter: data.txCounter });
+          localStorage.setItem(KEY+'_vital', vital);
+          localStorage.setItem(KEY+'_vital_ts', String(now));
+        }catch(_){}
+      }
+    }
     if(triggerSync && window.GitSync && DB.settings.github.enabled && DB.settings.github.autoSync){
       window.GitSync.schedulePush();
     }
@@ -176,36 +312,58 @@ const DB = (() => {
   }
 
   function scheduleFlush(){
+    if(!loaded){
+      // Carga inicial en curso: el flush real se aplaza hasta su fin.
+      return;
+    }
     if(backend === 'local'){
-      // Modo fallback (sin IndexedDB): guardar directo a localStorage.
       flushToLocal();
       return;
     }
-    if(flushing){
-      flushScheduled = true;
-      return;
-    }
-    flushing = true;
-    setTimeout(()=>doFlush(), 300);
+    if(flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(doFlush, 300);
   }
   async function doFlush(){
-    flushScheduled = false;
-    const snapshot = JSON.stringify(data);
+    flushTimer = null;
+    // _savedAt viaja con el snapshot: el arranque lo usa para desempatar
+    // frescura IndexedDB vs respaldo localStorage.
+    const snapshot = JSON.stringify({ ...data, _savedAt: Date.now() });
     try{
       await idbPut(KEY, snapshot);
-      flushing = false;
-      if(flushScheduled) scheduleFlush();
+      dirty = false;
+      // IndexedDB commiteó: los respaldos de emergencia de localStorage
+      // ya no son necesarios (se reescribirán en el próximo save si hace falta).
+      try{ localStorage.removeItem(KEY+'_vital'); localStorage.removeItem(KEY+'_vital_ts'); }catch(_){}
     }catch(e){
-      flushing = false;
       // IndexedDB falló: probar localStorage como salvavidas.
       const lsOk = flushToLocal();
       if(!lsOk) showStorageBanner(e);
-      if(flushScheduled) scheduleFlush();
     }
   }
   function flushToLocal(){
-    try{ localStorage.setItem(KEY, JSON.stringify(data)); return true; }
-    catch(e){ return false; }
+    try{
+      const snap = JSON.stringify({ ...data, _savedAt: Date.now() });
+      localStorage.setItem(KEY, snap);
+      localStorage.setItem(KEY+'_ts', String(Date.now()));
+      dirty = false;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  // Flush de emergencia: cuando Android minimiza/cierra la PWA no hay
+  // tiempo de esperar el debounce. Escribe ya lo que haya pendiente.
+  function flushNow(){
+    if(!dirty || !loaded) return;
+    if(backend === 'local'){ flushToLocal(); return; }
+    // Doble escritura de emergencia:
+    // 1) localStorage es SÍNCRONO — garantiza que los datos estén en
+    //    disco ANTES de que la página muera (pagehide no espera puts
+    //    async de IndexedDB).
+    // 2) IndexedDB async: si llega a commitear, mejor (es la fuente
+    //    principal); si no, el arranque encontrará el respaldo en
+    //    localStorage y lo re-migrará.
+    try{ flushToLocal(); }catch(_){}
+    try{ doFlush(); }catch(_){}
   }
 
   function showStorageBanner(err){
@@ -258,6 +416,18 @@ const DB = (() => {
   // de IndexedDB (si son más frescos) se aplican en milisegundos.
   migrateInitial();
   if(data && data.repairs) migrate();
+
+  // Flush de emergencia al minimizar/cerrar la app (PWA en Android:
+  // pagehide es lo último que se ejecuta; visibilitychange cubre el
+  // cambio a segundo plano; beforeunload cubre escritorio). El debounce
+  // de 300ms no da tiempo ahí.
+  try{
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'hidden') flushNow();
+    });
+    window.addEventListener('pagehide', flushNow);
+    window.addEventListener('beforeunload', flushNow);
+  }catch(_){}
 
   function migrate(){
     let changed = false;
@@ -329,6 +499,7 @@ const DB = (() => {
     get backend(){ return backend; },           // 'idb' | 'local'
     storageInfo: null,                          // lo llena ensurePersistent()
     ensurePersistent,
+    flushNow,                                   // escritura inmediata (emergencia)
     save, sha256, norm,
     async hashAnswer(ans){ return sha256(norm(ans)); },
     setSecurityQuestions(list){
@@ -349,8 +520,22 @@ const DB = (() => {
       save(false);
     },
     updateGithub(patch){
+      const before = { ...(data.settings.github||{}) };
       data.settings.github = { ...data.settings.github, ...patch };
       save(false);
+      // v48: al completar la conexión por primera vez (user+repo+token),
+      // arrancar el motor de sincronización en el mismo instante — el
+      // guardado local ya es permanente; esto sube lo pendiente y activa
+      // el polling sin esperar a reabrir la app.
+      try{
+        const gh = data.settings.github;
+        if(window.GitSync && GitSync.cfgOk && GitSync.cfgOk()
+           && !(before.user && before.repo && before.token)
+           && gh.enabled && gh.autoSync){
+          GitSync.schedulePush();
+          if(GitSync.startAutoPull) GitSync.startAutoPull();
+        }
+      }catch(_){}
     },
     setGithubShared(shared){
       data.settings.githubShared = shared || null;
@@ -364,9 +549,9 @@ const DB = (() => {
     resetAll({ keepDeviceId = false } = {}){
       const devId = keepDeviceId ? localStorage.getItem('taller_device_id') : null;
       const keys = [
-        'taller_db_v1','taller_gh_hashes','taller_gh_dirty_repairs','taller_gh_dirty_tx',
+        'taller_db_v1','taller_db_v1_vital','taller_db_v1_vital_ts','taller_db_v1_ts','taller_gh_hashes','taller_gh_dirty_repairs','taller_gh_dirty_tx',
         'taller_gh_deleted','taller_gh_deleted_tx','taller_device_id',
-        'taller_repair_draft_v1','taller_session','taller_handles'
+        'taller_repair_draft_v1','taller_session','taller_handles','taller_bootstrap_asked'
       ];
       for(const k of keys){
         try{ localStorage.removeItem(k); }catch(_){}
@@ -383,6 +568,7 @@ const DB = (() => {
       data = structuredClone(defaults);
       data.schemaVersion = SCHEMA_VERSION;
       if(devId){ try{ localStorage.setItem('taller_device_id', devId); }catch(_){} }
+      dirty = true;
       scheduleFlush();
       // Notificar al módulo de sincronización para que olvide hashes/tombstones
       if(window.GitSync && typeof window.GitSync.resetCaches === 'function'){
@@ -455,8 +641,18 @@ const DB = (() => {
       let id = (t && typeof t.id === 'string' && t.id) ? t.id : null;
       const taken = new Set(data.transactions.map(x=>x.id));
       if(id && taken.has(id)) id = null;
+      // v48: sufijo de dispositivo (igual que las reparaciones R0001-ABCD).
+      // Sin él, dos móviles generan ambos "T0001" y al sincronizar una
+      // transacción PISA a la otra (pérdida silenciosa de ventas/compras).
+      const localSuffix = (()=>{
+        try{
+          let v = localStorage.getItem('taller_device_id');
+          if(!v){ v = Math.random().toString(36).slice(2,6).toUpperCase(); localStorage.setItem('taller_device_id', v); }
+          return v;
+        }catch(_){ return Math.random().toString(36).slice(2,6).toUpperCase(); }
+      })();
       if(!id){
-        do { id = 'T' + String(data.txCounter++).padStart(4,'0'); }
+        do { id = 'T' + String(data.txCounter++).padStart(4,'0') + '-' + localSuffix; }
         while(taken.has(id));
       }
       t.id = id;

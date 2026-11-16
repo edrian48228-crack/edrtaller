@@ -2605,6 +2605,17 @@ const Views = (() => {
     const productOptions = (DB.settings.productTypes||[])
       .map(p=>`<option value="${escape(p)}">`).join('');
     const dateVal = t.date ? fmtDateInput(t.date) : fmtDateInput(Date.now());
+    // v48: en ventas NUEVAS prellenamos el coste unitario con el coste
+    // promedio de las compras de ese producto cuando exista — la ganancia
+    // queda calculada desde el primer guardado sin teclear nada extra.
+    let prefillCost = '';
+    if(!existing && t.type==='sale'){
+      const stat = DB.productStats()[String(t.product||'').trim()];
+      if(stat && stat.purchased>0){
+        const avg = stat.invested / stat.purchased;
+        if(isFinite(avg) && avg>0) prefillCost = avg.toFixed(2);
+      }
+    }
 
     UI.openModal(`
       <h2 style="margin:0 0 4px;font-size:20px">${existing?'Editar':'Nueva'} ${txLabel(t.type)}</h2>
@@ -2636,8 +2647,8 @@ const Views = (() => {
         </div>
         <div class="form-group cost-group" id="costGroup">
           <label>Costo unitario (lo que te costó) <span class="muted" style="text-transform:none;font-weight:500">— opcional</span></label>
-          <input name="unitCost" type="number" min="0" step="0.01" inputmode="decimal" value="${t.unitCost!=null?t.unitCost:''}" placeholder="Ej: 5.00">
-          <p class="muted small" style="margin:6px 2px 0">Se usa para calcular tu <b>ganancia</b> e <b>inversión</b> al vender.</p>
+          <input name="unitCost" type="number" min="0" step="0.01" inputmode="decimal" value="${t.unitCost!=null?t.unitCost:prefillCost}" placeholder="Ej: 5.00">
+          <p class="muted small" style="margin:6px 2px 0">Se usa para calcular tu <b>ganancia</b> e <b>inversión</b> al vender. ${prefillCost?`Prellenado con el costo promedio de tus compras (<b>$ ${escape(prefillCost)}</b> por unidad) — ajústalo si esta venta te costó distinto.`:''}</p>
           <div id="profitHint" class="profit-hint hidden"></div>
         </div>
         <div class="form-group">
@@ -2709,6 +2720,27 @@ const Views = (() => {
     if(costI) costI.addEventListener('input', updateProfitHint);
     totalI.addEventListener('input', ()=>{ totalEdited = true; updateProfitHint(); });
     typeSel.addEventListener('change', ()=>{ updateCpLabel(); updateCostVisibility(); });
+    // v48: al escribir el producto en una VENTA, si el coste está vacío se
+    // prellena con el costo promedio de las compras de ese producto —
+    // la ganancia queda bien calculada sin teclear nada extra.
+    const productI = form.querySelector('[name=product]');
+    let costTouched = false;
+    if(costI) costI.addEventListener('input', ()=>{ costTouched = true; });
+    productI.addEventListener('input', ()=>{
+      if(typeSel.value !== 'sale') return;
+      if(costTouched && String(costI.value).trim()!=='') return; // el usuario lo escribió
+      const stat = DB.productStats()[String(productI.value||'').trim()];
+      if(stat && stat.purchased>0){
+        const avg = stat.invested / stat.purchased;
+        if(isFinite(avg) && avg>0){
+          costI.value = avg.toFixed(2);
+          updateProfitHint();
+        }
+      } else if(!costTouched){
+        costI.value = '';
+        profitHint.classList.add('hidden');
+      }
+    });
     updateCpLabel();
     updateCostVisibility();
     if(!totalEdited) recalc();
@@ -2719,6 +2751,7 @@ const Views = (() => {
       const product = (fd.get('product')||'').trim();
       if(!product){ UI.toast('Indica el producto'); return; }
       const q = parseFloat(fd.get('quantity'))||0;
+      if(q<=0){ UI.toast('La cantidad debe ser mayor que cero'); return; }
       const u = parseFloat(fd.get('unitPrice'))||0;
       const tot = fd.get('total')!=='' ? parseFloat(fd.get('total')) : (q*u);
       const typeVal = fd.get('type')==='purchase' ? 'purchase' : 'sale';
