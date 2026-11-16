@@ -1,7 +1,6 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1783529243223,
   "repair": {
     "clientName": "Ramon Gamboa",
     "clientAddress": "16 norte entre 6 y 7 oeste. Edif 156.#294b",
@@ -36,6 +35,7 @@
     ],
     "parts": [],
     "id": "R0031-EB5K",
-    "updatedAt": 1783529002521
+    "updatedAt": 1783529002521,
+    "deliveredAt": null
   }
 }
