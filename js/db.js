@@ -170,24 +170,36 @@ const DB = (() => {
         }
       }catch(_){}
       if(lsParsed && (lsParsed.repairs || lsParsed.settings) && lsParsed.settings && idbData.settings){
-        // Fusión campo a campo: el respaldo nuevo manda, pero sin descartar
-        // fotos de reparaciones que solo estén en IndexedDB.
+        // v51 — ANTI-RESURRECCIÓN: la fuente NUEVA manda; la perdedora NO se
+        // fusiona por unión. Antes la unión IndexedDB ∪ localStorage revivía
+        // reparaciones borradas o un reset: el perdedor aportaba sus IDs y el
+        // ganador no podía quitarlos. Ahora:
+        //   - repairs/transactions: los del ganador tal cual (los del
+        //     perdedor solo se añaden si el ganador NO los tiene Y el
+        //     perdedor es más NUEVO — caso app que murió antes de commitear).
+        //   - settings/github: merge (config de dispositivo, nunca se pierde).
         const winner = (lsTs >= idbTs) ? lsParsed : idbData;
         const loser  = (lsTs >= idbTs) ? idbData : lsParsed;
-        const merged = deepMerge(structuredClone(defaults), loser);
-        // settings: gana el respaldo nuevo (token/contraseña/config frescos)
-        merged.settings = deepMerge(merged.settings, winner.settings || {});
+        const merged = deepMerge(structuredClone(defaults), winner);
         // github: config del dispositivo — gana SIEMPRE el más nuevo
         merged.settings.github = { ...(loser.settings||{}).github, ...(winner.settings||{}).github };
-        // reparaciones: union por id, la versión del ganador pisa
+        // Reparaciones y transacciones: las del GANADOR son la verdad.
+        // Las del perdedor solo se añaden si el ganador no las conoce y el
+        // perdedor es estrictamente más nuevo (huérfanas de un flush perdido).
         const byId = new Map();
-        for(const r of (loser.repairs||[])) byId.set(r.id, r);
         for(const r of (winner.repairs||[])) byId.set(r.id, r);
+        if(winner === idbData){
+          // localStorage más nuevo (flush síncrono que IDB no llegó a ver):
+          // sus reparaciones PISAN a las de IDB (escribió lo último).
+          for(const r of (loser.repairs||[])) byId.set(r.id, r);
+        }
         merged.repairs = [...byId.values()];
         // transacciones igual
         const txById = new Map();
-        for(const t of (loser.transactions||[])) txById.set(t.id, t);
         for(const t of (winner.transactions||[])) txById.set(t.id, t);
+        if(winner === idbData){
+          for(const t of (loser.transactions||[])) txById.set(t.id, t);
+        }
         merged.transactions = [...txById.values()];
         merged.counter = Math.max(loser.counter||1, winner.counter||1);
         merged.txCounter = Math.max(loser.txCounter||1, winner.txCounter||1);
@@ -216,7 +228,13 @@ const DB = (() => {
       try{ localStorage.removeItem(KEY+'_vital'); localStorage.removeItem(KEY+'_vital_ts'); }catch(_){}
       // localStorage limpio tras confirmar en IndexedDB... el flush es async,
       // así que el respaldo se mantiene hasta el próximo arranque limpio.
-      return;
+      // v51 — BUG CRÍTICO CORREGIDO: aquí había un `return` que saltaba el
+      // `loaded = true` de abajo. Con loaded=false, save() NUNCA escribía
+      // ni localStorage ni IndexedDB en el arranque normal (IDB ya poblada):
+      // la app funcionaba en RAM pero al cerrarla se perdía TODO, y al
+      // reabrirla el autoPull traía de vuelta las versiones viejas del
+      // servidor — "las reparaciones eliminadas/editadas reaparecen".
+      // El flujo sigue en común: persist(), loaded=true y flush diferido.
     }
     // IndexedDB vacía: si localStorage tenía datos, migrarlos.
     let ls = null;
@@ -556,20 +574,47 @@ const DB = (() => {
       for(const k of keys){
         try{ localStorage.removeItem(k); }catch(_){}
       }
-      // IndexedDB también (v41): datos y eventual residuo de migración.
-      try{
-        idb().then(db=>new Promise(res=>{
-          const tx = db.transaction(IDB_STORE,'readwrite');
-          const rq = tx.objectStore(IDB_STORE).clear();
-          rq.onsuccess = ()=>res(true);
-          rq.onerror = ()=>res(false);
-        })).catch(()=>{});
-      }catch(_){}
+      // v51 — ANTI-RESURRECCIÓN: el reset debe dejar el disco con los
+      // defaults VACÍOS de forma INMEDIATA y verificable. Antes solo se
+      // ponían los defaults en RAM y el flush async (300 ms) competía con
+      // el localStorage aún sin borrar del todo: al recargar, loadInitial()
+      // leía el respaldo VIEJO (síncrono) y migrareInitial() fusionaba por
+      // unión IndexedDB ∪ localStorage — TODO lo borrado reaparecía.
+      // Ahora: 1) se escribe SÍNCRONAMENTE el snapshot vacío (con _savedAt
+      // nuevo) en localStorage como semilla del próximo arranque, 2) se
+      // limpia IndexedDB y se re-pone el mismo snapshot vacío, 3) el
+      // respaldo vital se elimina para que no re-inyecte settings.
       data = structuredClone(defaults);
       data.schemaVersion = SCHEMA_VERSION;
       if(devId){ try{ localStorage.setItem('taller_device_id', devId); }catch(_){} }
       dirty = true;
-      scheduleFlush();
+      const resetTs = Date.now();
+      const snap = JSON.stringify({ ...data, _savedAt: resetTs });
+      try{
+        localStorage.setItem(KEY, snap);
+        localStorage.setItem(KEY+'_ts', String(resetTs));
+      }catch(_){}
+      // IndexedDB: limpiar TODO y re-escribir el snapshot vacío.
+      // clear() + put() van EN LA MISMA transacción readwrite → atómico:
+      // o queda el vacío nuevo, o queda el contenido anterior (nunca un
+      // estado a medio borrar).
+      try{
+        idb().then(db=>new Promise((res,rej)=>{
+          const tx = db.transaction(IDB_STORE,'readwrite');
+          const store = tx.objectStore(IDB_STORE);
+          store.clear();
+          store.put(snap, KEY);
+          tx.oncomplete = ()=>res(true);
+          tx.onerror = ()=>rej(tx.error);
+          tx.onabort = ()=>rej(tx.error);
+        })).then(()=>{
+          // IDB confirmó el vacío: el respaldo de localStorage ya no hace
+          // falta como semilla, se borra para no ensuciar (el próximo save
+          // lo re-crea si procede).
+          try{ localStorage.removeItem(KEY); localStorage.removeItem(KEY+'_ts'); }catch(_){}
+        }).catch(()=>{ /* IDB falló: la semilla localStorage queda como verdad */ });
+      }catch(_){}
+      dirty = false;
       // Notificar al módulo de sincronización para que olvide hashes/tombstones
       if(window.GitSync && typeof window.GitSync.resetCaches === 'function'){
         try{ window.GitSync.resetCaches(); }catch(_){}

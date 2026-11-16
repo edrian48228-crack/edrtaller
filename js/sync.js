@@ -420,12 +420,18 @@ const GitSync = (() => {
     lastHashes = {}; knownDirty = new Set(); knownDeleted = new Set();
     knownDirtyTx = new Set(); knownDeletedTx = new Set();
     rateLimitedUntil = 0;
+    pushRetries = 0;
+    if(pushRetryTimer){ clearTimeout(pushRetryTimer); pushRetryTimer = null; }
     try{
       localStorage.removeItem('taller_gh_hashes');
       localStorage.removeItem('taller_gh_dirty_repairs');
       localStorage.removeItem('taller_gh_dirty_tx');
       localStorage.removeItem('taller_gh_deleted');
       localStorage.removeItem('taller_gh_deleted_tx');
+      // v51: el arranque tras el reset NO re-baja la nube (autoPull
+      // traería de vuelta todo lo que el usuario acaba de reiniciar).
+      // Se consume una sola vez en Bootstrap.run().
+      localStorage.setItem('taller_skip_bootstrap_once', '1');
     }catch(_){}
     GitLog.clear();
     GitLog.warn('reset', 'Cachés de sincronización reiniciadas en este dispositivo');
@@ -1090,6 +1096,34 @@ const GitSync = (() => {
   function toast(msg){
     try{ if(window.UI && UI.toast) UI.toast(msg); }catch(_){}
   }
+  // v51 — reintentos persistentes: si un push automático falla (sin red,
+  // error de GitHub, o estaba busy otra operación), NO se pierde: se
+  // reprograma con backoff creciente (2,5s → 5s → 10s → 20s → 40s máx)
+  // hasta que logra subir. Así, cualquier cambio hecho offline se ejecuta
+  // en el servidor apenas se restablece la conexión, sin esperar a que
+  // el usuario toque algo.
+  let pushRetries = 0;
+  let pushRetryTimer = null;
+  function retryPushSoon(reason){
+    if(pushRetryTimer) clearTimeout(pushRetryTimer);
+    const delay = Math.min(2500 * Math.pow(2, pushRetries), 40000);
+    pushRetries++;
+    GitLog.info('retry', `Subida reintentará en ${(delay/1000).toFixed(1)}s (${reason})`);
+    pushRetryTimer = setTimeout(async ()=>{
+      pushRetryTimer = null;
+      if(!cfgOk() || !g().autoSync){ pushRetries = 0; return; }
+      try{
+        const res = await pushAll();
+        pushRetries = 0; // éxito: el ciclo de reintentos se reinicia
+        if(res && (res.pushed>0 || res.deleted>0)){
+          toast(`✓ Cambios subidos a la nube (${res.pushed} subida(s), ${res.deleted} borrada(s))`);
+        }
+      }catch(e){
+        GitLog.warn('retry', e.message || String(e));
+        retryPushSoon('fallo del reintento');
+      }
+    }, delay);
+  }
   function schedulePush(){
     if(!cfgOk()){
       GitLog.warn('auto','Configuración de GitHub incompleta — los cambios NO se subirán');
@@ -1120,7 +1154,8 @@ const GitSync = (() => {
         }
       }catch(e){
         GitLog.err('auto', e.message);
-        toast('⚠ Error subiendo a la nube: '+(e.message||e));
+        toast('⚠ Sin conexión — se reintentará automáticamente');
+        retryPushSoon('sin conexión');
       }
     }, 1800);
   }
@@ -1158,6 +1193,18 @@ const GitSync = (() => {
     if(busy) return;
     if(rateLimitedUntil > Date.now()) return;
     if(typeof document !== 'undefined' && document.hidden) return;
+    // v51 — tras "Reiniciar todo el sistema" NO bajamos la nube en este
+    // arranque: traería de vuelta todo lo que el usuario acaba de borrar.
+    // La clave la consume Bootstrap.run() y este tick (una sola vez).
+    let skipPullOnce = false;
+    try{
+      if(localStorage.getItem('taller_skip_bootstrap_once') === '1'){
+        skipPullOnce = true;
+        localStorage.removeItem('taller_skip_bootstrap_once');
+        GitLog.info('auto-pull', 'Pull inicial omitido: sistema recién reiniciado');
+      }
+    }catch(_){}
+    if(skipPullOnce) return;
     pullInFlight = true;
     try{
       // ANTI-PÉRDIDA: si hay cambios locales pendientes de subir, el pull
@@ -1194,6 +1241,16 @@ const GitSync = (() => {
     // pendientes (protege los datos capturados offline), y solo después
     // de que el push termine bajamos los cambios remotos.
     setTimeout(async ()=>{
+      // v51 — tras reset total: el usuario decide también sobre la nube;
+      // este dispositivo arranca limpio y NO re-descarga el repositorio
+      // en este arranque (la clave la consume Bootstrap.run() o el tick).
+      try{
+        if(localStorage.getItem('taller_skip_bootstrap_once') === '1'){
+          localStorage.removeItem('taller_skip_bootstrap_once');
+          GitLog.info('auto-push-init', 'Arranque limpio tras reinicio: sin descarga de la nube en esta sesión');
+          return;
+        }
+      }catch(_){}
       try{
         if(cfgOk() && g().autoSync){
           const pend = await getPendingPush();
@@ -1217,6 +1274,7 @@ const GitSync = (() => {
       window.addEventListener('online', ()=>{
         // Reconexión: subir lo pendiente INMEDIATAMENTE, sin esperar al tick.
         rateLimitedUntil = 0; // nueva conexión: reintenta
+        pushRetries = 0;      // ciclo de reintentos desde cero (conexión nueva)
         if(cfgOk() && g().autoSync) schedulePush();
         autoPullTick();
       });
@@ -1436,6 +1494,21 @@ const Bootstrap = (() => {
     if(alreadyConfigured() || wasAsked()) return;
     // (window.Auth se asigna en js/auth.js desde v5.)
     if(!Auth.isLoggedIn()) return; // tras el login, en el init de App
+    // v51 — ANTI-RESURRECCIÓN tras "Reiniciar todo el sistema": si el
+    // dispositivo acaba de hacer reset local, Bootstrap NO debe volver a
+    // bajar la nube automáticamente (el usuario decidió empezar de cero).
+    // La clave 'taller_bootstrap_asked' se borra en DB.resetAll() solo
+    // para restaurar el borrado de fábrica COMPLETO; aquí evitamos que
+    // ese borrado re-descargue datos: el reset marca la sesión de forma
+    // que el bootstrap se salta hasta el próximo arranque limpio.
+    try{
+      if(localStorage.getItem('taller_skip_bootstrap_once') === '1'){
+        localStorage.removeItem('taller_skip_bootstrap_once');
+        markAsked(); // no volver a preguntar en este arranque
+        GitLog.info('boot', 'Bootstrap omitido: el sistema acaba de reiniciarse');
+        return;
+      }
+    }catch(_){}
     try{
       const cfg = await fetchSharedConfig();
       if(!cfg){ markAsked(); return; }
