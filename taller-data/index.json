@@ -73,7 +73,8 @@
     ],
     "defaultWarrantyDays": 30,
     "productMinStock": {
-      "Cable USB": 3
+      "Cable USB": 3,
+      "Mica protectora": 3
     },
     "creator": {
       "phone": "",
