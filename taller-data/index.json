@@ -3,7 +3,7 @@
   "schema": 1,
   "schemaVersion": 9,
   "counter": 4,
-  "txCounter": 1,
+  "txCounter": 2,
   "settings": {
     "appName": "Taller",
     "logo": null,
@@ -97,7 +97,23 @@
     },
     "githubSharedAt": 1794844916438
   },
-  "transactions": [],
+  "transactions": [
+    {
+      "type": "purchase",
+      "product": "Mica protectora",
+      "quantity": 20,
+      "unitPrice": 600,
+      "unitCost": null,
+      "costTotal": null,
+      "total": 12000,
+      "date": 1794787200000,
+      "counterparty": "Variable",
+      "notes": "Micas de cristal de Redmi 9A y Tecno",
+      "id": "T0001-8BUP",
+      "createdAt": 1794853259740,
+      "updatedAt": 1794853259740
+    }
+  ],
   "repairIds": [
     "R0003-8BUP",
     "R0001-8BUP"
