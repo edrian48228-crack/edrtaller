@@ -1,5 +1,5 @@
 // =============================================================
-// Service Worker — v52 (auto-actualización robusta)
+// Service Worker — v53 (auto-actualización robusta)
 //
 // - Precarga individual (no addAll todo-o-nada): un 404 puntual
 //   (p. ej. un screenshot) ya no tumba la actualización entera.
@@ -11,13 +11,15 @@
 // - fetch: HTML/JS/CSS network-first con ignoreSearch, para que
 //   las peticiones con ?v= encuentren su copia offline aunque
 //   la caché la guardara sin query.
+// - v53: precarga los .min (producción); index.html ya los
+//   referencia con ?v=53.
 // =============================================================
-const CACHE = 'taller-v52';
-const VERSION = '52';
+const CACHE = 'taller-v53';
+const VERSION = '53';
 const ASSETS = [
   './','./index.html','./manifest.json',
-  './css/styles.css',
-  './js/db.js','./js/sync.js','./js/auth.js','./js/install.js','./js/ui.js','./js/views.js','./js/app.js',
+  './css/styles.min.css',
+  './js/db.min.js','./js/sync.min.js','./js/auth.min.js','./js/install.min.js','./js/ui.min.js','./js/views.min.js','./js/app.min.js',
   './icons/icon-192.png','./icons/icon-512.png',
   './icons/maskable-192.png','./icons/maskable-512.png',
   './icons/favicon-32.png',

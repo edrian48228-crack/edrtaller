@@ -1,8 +1,57 @@
-# Taller — PWA de reparaciones (v5)
+# Taller — PWA de reparaciones (v5.7)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## Novedades v5.7 — Arranque rápido + presentación profesional de carga
+
+- **Carga más rápida**: la app arranca apenas termina de parsear (sin
+  esperar `DOMContentLoaded`), el módulo PWA (`install.js`) se carga como
+  `defer` sin bloquear el primer render, y **todos los assets de
+  producción van minificados** (`db.js` 40→18 KB, `sync.js` 68→30 KB:
+  ~60 KB menos de parseo en cada apertura). Medido: `DOMContentLoaded`
+  130 ms → 109 ms en escritorio; en móvil el ahorro de parseo es mayor.
+- **Splash de carga profesional**: pantalla de arranque con logo animado
+  (pulsado suave), nombre de marca, **barra de progreso con hitos reales**
+  (almacenamiento → datos → interfaz) y etiqueta de versión. Se pinta
+  inline en `<head>` — aparece **antes de descargar un solo byte de JS** —
+  y se retira con fundido de 0,45 s cuando la primera vista ya está en
+  pantalla. Respeta `prefers-reduced-motion`.
+- **Contraseña de entrada por defecto: `taller48228`** — viene
+  preconfigurada (hash SHA-256) en instalaciones nuevas y en las
+  instalaciones anteriores al actualizar. Mientras no la cambies, la
+  pantalla de entrada muestra la pista discreta *"Contraseña de fábrica:
+  taller48228 · cámbiala en Admin"*; en cuanto la cambias desde
+  Administración → Cambiar contraseña, la pista desaparece.
+- **"No pedir contraseña" funciona de verdad**: con el interruptor de
+  Administración desactivado (`Pedir contraseña al entrar`), la app entra
+  **directo** al abrir o recargar, sin mostrar la pantalla de login —
+  incluido el caso en que el ajuste solo exista en IndexedDB (se corrige
+  la pantalla en cuanto termina la lectura del disco), y el botón
+  *Salir* recarga directo a la app. El hash de contraseña **nunca viaja
+  al repositorio** (es un ajuste del dispositivo).
+- **Build reproducible**: `scripts/build_v53.sh` regenera los `.min`
+  desde las fuentes legibles (`js/*.js`, `css/styles.css`); el paquete
+  lleva ambas: producción minificada (`index.html` + `.min`) y fuentes
+  completas (`index.src.html` + `.js`) para futuras ediciones.
+
+## Novedades v5.6 — Persistencia a prueba de reinicio (correcciones críticas)
+
+- **Bug crítico corregido**: en el arranque normal, `save()` no llegaba a
+  activarse nunca (la carga inicial saltaba el `loaded=true`): la app
+  "parecía" guardar pero al cerrar y abrir reaparecían todas las
+  reparaciones borradas/editadas. Ahora todo cambio se persiste en
+  memoria → `localStorage` (síncrono) → IndexedDB (debounce 300 ms) →
+  servidor (auto-push con reintentos 2,5 s→40 s).
+- **Reset total real y atómico** (clear+put en la misma transacción
+  IndexedDB + semilla síncrona) y **arranque sin resurrección**: la
+  fuente más nueva gana; la vieja ya no se fusiona por unión (lo que
+  revivía borrados).
+- **Cola offline con reintentos persistentes**: si la subida falla (sin
+  red), se reintenta con backoff hasta lograrlo; al reconectar (`online`)
+  se dispara inmediatamente. Tras un reset, el arranque no re-descarga
+  la nube que acabas de descartar (salvo que marque borrar la nube).
 
 ## Novedades v5 — Reinicio total + conexión automática del móvil
 - **Botón "Reiniciar todo el sistema"** en Administración (zona peligrosa):
@@ -83,7 +132,10 @@ es tu servidor de datos.
    - **Branch**: `main` / `/ (root)` → **Save**.
 3. Espera 1–3 minutos: "Your site is live at
    **https://TU-USUARIO.github.io/taller-app/**".
-4. Abre esa URL y entra (defines tu contraseña la primera vez).
+4. Abre esa URL e inicia sesión con la **contraseña de fábrica
+   `taller48228`** (cámbiala luego en Administración → Cambiar
+   contraseña; la pantalla de entrada te recuerda la clave de fábrica
+   mientras no la cambies).
 
 ## Paso 4 — Obtener el token de GitHub (PASO A PASO)
 

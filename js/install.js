@@ -151,3 +151,15 @@ const Install = (() => {
   return { init, promptInstall, openInstallGuide, isStandalone, isIOS, renderInstallCard };
 })();
 window.Install = Install;
+// v53 — arranque rápido: este archivo se carga como <script defer>. Si App.init()
+// ya corrió antes (los script normales se ejecutan antes que los defer), la llamada
+// original Install.init() se perdió → auto-iniciar aquí una única vez.
+(function(){
+  let ran = false;
+  function boot(){
+    if(ran) return; ran = true;
+    try{ Install.init(); }catch(_){}
+  }
+  if(window.__appInitDone) boot();
+  else window.addEventListener('__appReady', boot, { once:true });
+})();

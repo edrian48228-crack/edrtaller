@@ -40,8 +40,12 @@ const DB = (() => {
       appName: 'Taller',
       logo: null,
       logoPreset: 'tools',
+      // v53 — CONTRASEÑA DE ENTRADA POR DEFECTO: 'taller48228'. Se pre-carga
+      // como hash (SHA-256) para que el primer arranque ya funcione con esta
+      // clave; el usuario la cambia desde Admin → Cambiar contraseña (lo que
+      // reemplaza el hash y desactiva la pista de la pantalla de login).
       requirePassword: true,
-      passwordHash: null,
+      passwordHash: 'ff00c1b79696c240ddb8d79beeb2f0f86a914e4f3552b287d453b87971d0635b', // = 'taller48228'
       securityQuestions: [],
       deviceTypes: DEFAULT_DEVICES.slice(),
       productTypes: DEFAULT_PRODUCTS.slice(),
@@ -283,6 +287,19 @@ const DB = (() => {
     // seguridad (los flush aplazados por el gate se ejecutan ahora).
     loaded = true;
     if(dirty) scheduleFlush();
+    // v53 — Aviso de arranque para la UI: migrateInitial es asíncrona y puede
+    // traer del disco un estado MÁS FRESCO que loadInitial() (p. ej.
+    // requirePassword=false guardado en IndexedDB sin respaldo localStorage).
+    // app.js escucha y corrige la pantalla (login vs app) si procede.
+    try{
+      if(window.App && typeof window.App.onStorageReady === 'function'){
+        window.App.onStorageReady();
+      } else {
+        window.addEventListener('__appReady', ()=>{
+          try{ window.App && window.App.onStorageReady && window.App.onStorageReady(); }catch(_){}
+        }, { once:true });
+      }
+    }catch(_){}
   }
 
   // ---------- Guardado ----------
@@ -487,6 +504,15 @@ const DB = (() => {
     if(data.settings.logo === undefined){ data.settings.logo = null; changed = true; }
     if(!data.settings.logoPreset){ data.settings.logoPreset = 'tools'; changed = true; }
     if(!Array.isArray(data.settings.securityQuestions)){ data.settings.securityQuestions = []; changed = true; }
+    // v53 — Contraseña de fábrica 'taller48228': instalaciones anteriores
+    // (passwordHash:null por deepMerge) la adoptan al actualizar; solo si la
+    // contraseña sigue ACTIVADA y nunca hubo clave. Si el usuario ya tenía
+    // clave propia (hash distinto) NO se toca; si la desactivó
+    // (requirePassword=false) tampoco hace falta.
+    if(!data.settings.passwordHash && data.settings.requirePassword){
+      data.settings.passwordHash = defaults.settings.passwordHash; changed = true;
+    }
+    if(data.settings.requirePassword === undefined){ data.settings.requirePassword = true; changed = true; }
     if(!data.settings.githubShared || typeof data.settings.githubShared!=='object'){
       data.settings.githubShared = null; changed = true;
     }

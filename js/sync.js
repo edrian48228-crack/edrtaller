@@ -317,6 +317,12 @@ const GitSync = (() => {
       counter: d.counter, txCounter: d.txCounter,
       settings: {
         ...d.settings,
+        // v53 — la contraseña y las preguntas de seguridad son del
+        // DISPOSITIVO, no del repo: nunca viajan (ni el hash). Así cada
+        // instalación mantiene su propia clave y un repo comprometido no
+        // expone material de autenticación.
+        passwordHash: null,
+        securityQuestions: [],
         // Nunca viajan por el repo:
         //  - token: credencial del dispositivo (secreto)
         //  - lastSyncAt/lastSha: estado operativo local que cambia en cada

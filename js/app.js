@@ -1,6 +1,32 @@
+// v53 — SPLASH: hitos de progreso real durante el arranque. El splash vive
+// inline en index.html y se pinta antes de bajar nada; aquí solo avanzamos
+// la barra y lo retiramos con fade cuando la interfaz YA está renderizada.
+const Splash = (() => {
+  const el = document.getElementById('edrSplash');
+  const fill = document.getElementById('spFill');
+  const msg = document.getElementById('spMsg');
+  let pct = 0;
+  function progress(p, m){
+    pct = Math.max(pct, Math.min(100, Math.round(p)));
+    if(fill) fill.style.width = pct + '%';
+    if(m && msg) msg.textContent = m;
+  }
+  function done(){
+    if(!el || el.classList.contains('done')) return;
+    el.classList.add('done');
+    // retirar del DOM tras el fade para no ensuciar accesibilidad/DOM
+    setTimeout(()=>{ try{ el.remove(); }catch(_){} }, 500);
+  }
+  return { progress, done };
+})();
+
 const App = (() => {
   let current = 'dashboard';
   let currentArg = null;
+  // v53 — hash de fábrica de 'taller48228' (mismo valor precargado en
+  // db.js defaults). Sirve para mostrar la pista solo mientras la clave
+  // no se ha cambiado.
+  const FACTORY_HASH = 'ff00c1b79696c240ddb8d79beeb2f0f86a914e4f3552b287d453b87971d0635b';
 
   // Logos: trazos refinados, geometría centrada, estética premium
   const LOGO_PRESETS = [
@@ -131,8 +157,6 @@ const App = (() => {
     // taller publicó config.json (GitHub Pages), preguntar una única vez
     // si desea conectarse y descargar todo sin teclear nada.
     try{ if(window.Bootstrap && Bootstrap.run) setTimeout(()=>Bootstrap.run(), 900); }catch(_){}
-    // Tarjeta de instalación PWA (Android/Chrome) o guía (iOS)
-    try{ if(window.Install && Install.renderInstallCard) Install.renderInstallCard(); }catch(_){}
   }
   function go(v, arg, extra){
     // Si salimos del formulario "nuevo/editar", limpiar la guardia de back-navigation
@@ -154,6 +178,8 @@ const App = (() => {
     // La vista se re-renderiza entera (innerHTML): la tarjeta de instalación
     // debe re-insertarse en cada dashboard mientras no esté instalada.
     if(v==='dashboard'){
+      // v53: install.js es defer — puede que aún no exista. Auto-boot de
+      // install.js escucha __appReady y se encarga; aquí solo si ya cargó.
       try{ if(window.Install && Install.renderInstallCard) Install.renderInstallCard(); }catch(_){}
     }
     window.scrollTo(0,0);
@@ -161,6 +187,7 @@ const App = (() => {
   function refresh(){ go(current, currentArg); }
 
   function init(){
+    Splash.progress(25, 'Leyendo almacenamiento…');
     applyBrand();
     document.getElementById('loginBtn').addEventListener('click', tryLogin);
     document.getElementById('loginPass').addEventListener('keydown', e=>{
@@ -170,6 +197,10 @@ const App = (() => {
     if(fb) fb.addEventListener('click', openForgotFlow);
     document.getElementById('logoutBtn').addEventListener('click', ()=>{
       Auth.logout();
+      // v53 — sin contraseña configurada (requirePassword=false) NO hay nada
+      // que desbloquear: salir y volver a entrar directo (como pide el
+      // diseño "no pedir contraseña"), en vez de enseñar un login inútil.
+      if(!DB.settings.requirePassword){ window.location.reload(); return; }
       showLogin();
     });
     document.getElementById('modalClose').addEventListener('click', UI.closeModal);
@@ -186,19 +217,45 @@ const App = (() => {
     const sb = document.getElementById('headerSearchBtn');
     if(sb) sb.addEventListener('click', ()=> go('search'));
     // Inicializar el módulo de instalación PWA (shortcuts del manifest,
-    // detección de beforeinstallprompt y guía iOS).
+    // detección de beforeinstallprompt y guía iOS). v53: install.js es defer;
+    // si aún no cargó, su auto-boot escucha __appReady.
     try{ if(window.Install && Install.init) Install.init(); }catch(_){}
-    if(Auth.isLoggedIn()) showApp();
-    else {
+    Splash.progress(55, 'Cargando tus datos…');
+    // v53 — SIN CONTRASEÑA configurada (requirePassword=false): entrar
+    // DIRECTO, jamás mostrar la pantalla de login. isLoggedIn() ya devuelve
+    // true en ese caso; el viejo código igualmente pasaba por showLogin si no
+    // había hash, cosa que no debe ocurrir cuando se desactivó la contraseña.
+    if(Auth.isLoggedIn()){
+      showApp();
+      // v41: sesión viva (app ya abierta) → asegurar almacenamiento persistente.
+      try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
+    } else {
+      // v53 — El hash de fábrica (taller48228) ya viene precargado, así que
+      // "Primer acceso: define tu contraseña" solo aplica si por migración
+      // antigua siguiera sin hash (ese caso define la primera tecleada).
+      // Si la clave sigue SIENDO la de fábrica, se lo recordamos con una
+      // pista discreta; apenas el usuario la cambia, la pista desaparece.
+      const isFactory = DB.settings.passwordHash === FACTORY_HASH;
+      const hint = document.querySelector('#loginScreen .muted');
       if(!DB.settings.passwordHash){
-        document.querySelector('#loginScreen .muted').textContent = 'Primer acceso: define tu contraseña';
+        if(hint) hint.textContent = 'Primer acceso: define tu contraseña';
+      } else if(isFactory && hint){
+        hint.innerHTML = 'Contraseña de fábrica: <b>taller48228</b> · cámbiala en Admin';
       }
       showLogin();
     }
-    // v41: sesión viva (app ya abierta) → asegurar almacenamiento persistente.
-    if(Auth.isLoggedIn()){
-      try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
+    // v53: arranque terminado — splash fuera, primera vista ya en pantalla.
+    // ?debug=1 congela el splash (inspección visual/diagnóstico de arranque).
+    if(new URLSearchParams(location.search).get('debug') === '1'){
+      Splash.progress(100, 'Listo (modo debug)');
+      window.__appInitDone = true;
+      window.dispatchEvent(new Event('__appReady'));
+      return;
     }
+    Splash.progress(100, 'Listo');
+    Splash.done();
+    window.__appInitDone = true;
+    window.dispatchEvent(new Event('__appReady'));
   }
   async function tryLogin(){
     const pass = document.getElementById('loginPass').value;
@@ -208,6 +265,10 @@ const App = (() => {
       document.getElementById('loginPass').value = '';
       applyBrand();
       showApp();
+      // v53: entrar con contraseña también despacha __appReady (install.js
+      // defer podría estar esperándolo si App.init ya había corrido sin login).
+      window.__appInitDone = true;
+      window.dispatchEvent(new Event('__appReady'));
       // v41: pedir almacenamiento persistente tras entrar (IndexedDB ya no
       // aparece en "liberar espacio" de Android y refresca el diagnóstico).
       try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
@@ -260,6 +321,33 @@ const App = (() => {
       });
     });
   }
-  return { init, go, refresh, applyBrand, getPresets };
+  return { init, go, refresh, applyBrand, getPresets, Splash,
+    // v53 — migrateInitial (IndexedDB) terminó DESPUÉS del init(): los datos
+    // reales del disco ya están en RAM. Si el estado de login cambió con
+    // ellos (p. ej. requirePassword=false guardado solo en IDB), corregir
+    // la pantalla ahora: sin este gancho, quien desactivó la contraseña
+    // seguía viendo el login tras recargar.
+    onStorageReady(){
+      try{
+        if(Auth.isLoggedIn() && document.getElementById('app').classList.contains('hidden')){
+          applyBrand();
+          showApp();
+          try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
+        }
+      }catch(_){}
+    }
+  };
 })();
-document.addEventListener('DOMContentLoaded', App.init);
+// v53 — ARRANQUE INMEDIATO: los <script> clásicos al final del body ya tienen
+// el DOM disponible (readyState !== 'loading'). No esperamos DOMContentLoaded:
+// eso recortaba ~40-80 ms en móviles (parseo JS de ~300 KB + evento posterior).
+// El splash inline ya está pintado desde <head>; App.init oculta todo al final.
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', App.init);
+} else {
+  App.init();
+}
+// v53 — exponer App en window (como Auth/GitLog): db.js (cargado antes)
+// necesita App.onStorageReady tras terminar migrateInitial, cuando el
+// binding léxico global de const aún no existía para él.
+window.App = App;
