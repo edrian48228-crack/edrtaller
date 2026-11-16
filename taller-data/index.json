@@ -2,7 +2,7 @@
   "kind": "index",
   "schema": 1,
   "schemaVersion": 9,
-  "counter": 4,
+  "counter": 5,
   "txCounter": 3,
   "settings": {
     "appName": "Taller",
@@ -133,6 +133,7 @@
     }
   ],
   "repairIds": [
+    "R0004-8BUP",
     "R0003-8BUP"
   ]
 }
