@@ -72,7 +72,9 @@
       "Otro"
     ],
     "defaultWarrantyDays": 30,
-    "productMinStock": {},
+    "productMinStock": {
+      "Cable USB": 3
+    },
     "creator": {
       "phone": "",
       "whatsapp": ""
