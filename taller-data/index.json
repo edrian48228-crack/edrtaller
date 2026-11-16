@@ -3,7 +3,7 @@
   "schema": 1,
   "schemaVersion": 9,
   "counter": 4,
-  "txCounter": 2,
+  "txCounter": 3,
   "settings": {
     "appName": "Taller",
     "logo": null,
@@ -98,6 +98,21 @@
     "githubSharedAt": 1794844916438
   },
   "transactions": [
+    {
+      "type": "purchase",
+      "product": "Cable USB",
+      "quantity": 5,
+      "unitPrice": 600,
+      "unitCost": null,
+      "costTotal": null,
+      "total": 3000,
+      "date": 1794787200000,
+      "counterparty": "Variable",
+      "notes": "Cable USB Chinos de cargar moviles",
+      "id": "T0002-8BUP",
+      "createdAt": 1794853528018,
+      "updatedAt": 1794853528018
+    },
     {
       "type": "purchase",
       "product": "Mica protectora",
