@@ -49,7 +49,11 @@ const DB = (() => {
       securityQuestions: [],
       deviceTypes: DEFAULT_DEVICES.slice(),
       productTypes: DEFAULT_PRODUCTS.slice(),
-      defaultWarrantyDays: 30,
+      // v54 — Garantía por defecto: 7 días para las reparaciones NUEVAS.
+      // Las reparaciones ya registradas conservan su warrantyDays original
+      // (la migración nunca pisa ese campo): esto solo cambia el valor
+      // sugerido al recibir un equipo nuevo y el fallback del sistema.
+      defaultWarrantyDays: 7,
       productMinStock: {},
       creator: { phone: '', whatsapp: '' },
       github: {
@@ -469,6 +473,16 @@ const DB = (() => {
     for(const r of data.repairs){
       if(r.devicePhoto && !r.devicePhotos){ r.devicePhotos = [r.devicePhoto]; changed = true; }
       if(!r.devicePhotos) r.devicePhotos = [];
+      // v56 — MULTI-FOTO DEL CLIENTE: el carnet necesita delante/detrás
+      // (y a veces más). Mismo patrón que devicePhotos: el array manda y
+      // clientPhoto se mantiene como alias de clientPhotos[0] para que
+      // tarjetas, tickets y réplicas antiguas sigan funcionando sin cambio.
+      if(r.clientPhoto && !Array.isArray(r.clientPhotos)){
+        r.clientPhotos = [r.clientPhoto]; changed = true;
+      }else if(!Array.isArray(r.clientPhotos)){
+        r.clientPhotos = r.clientPhoto ? [r.clientPhoto] : []; changed = true;
+      }
+      if(r.clientPhoto !== (r.clientPhotos[0] || null)){ r.clientPhoto = r.clientPhotos[0] || null; changed = true; }
       if(!r.naFields) r.naFields = [];
       if(!Array.isArray(r.clientPhones)){
         r.clientPhones = r.clientPhone ? [r.clientPhone] : [];
@@ -496,7 +510,7 @@ const DB = (() => {
     if(!Array.isArray(data.settings.productTypes) || !data.settings.productTypes.length){
       data.settings.productTypes = DEFAULT_PRODUCTS.slice(); changed = true;
     }
-    if(data.settings.defaultWarrantyDays == null){ data.settings.defaultWarrantyDays = 30; changed = true; }
+    if(data.settings.defaultWarrantyDays == null){ data.settings.defaultWarrantyDays = 7; changed = true; }
     if(!data.settings.productMinStock || typeof data.settings.productMinStock!=='object'){
       data.settings.productMinStock = {}; changed = true;
     }
@@ -674,6 +688,13 @@ const DB = (() => {
       save();
     },
     addRepair(r){
+      // v55 — ENTREGA BLINDADA (capa de datos): nadie registra una
+      // reparación ya Entregada (sin foto de firma la entrega no existe).
+      // Se guarda como Completada: el flujo de entrega con firma se hace
+      // después desde el detalle.
+      if(r.status === 'delivered' && !r.signaturePhoto){
+        r.status = 'completed';
+      }
       const localSuffix = (()=>{
         try{
           let v = localStorage.getItem('taller_device_id');
@@ -684,6 +705,13 @@ const DB = (() => {
       r.id = 'R' + String(data.counter++).padStart(4,'0') + '-' + localSuffix;
       r.createdAt = Date.now();
       r.updatedAt = Date.now();
+      // v56 — normalizar multi-foto del cliente al registrar (el alias
+      // clientPhoto siempre refleja clientPhotos[0]).
+      if(Array.isArray(r.clientPhotos)){
+        r.clientPhoto = r.clientPhotos[0] || null;
+      }else if(r.clientPhoto){
+        r.clientPhotos = [r.clientPhoto];
+      }
       if(r.status === 'delivered' && !r.deliveredAt) r.deliveredAt = Date.now();
       data.repairs.unshift(r);
       save();
@@ -694,7 +722,21 @@ const DB = (() => {
       const r = data.repairs.find(x=>x.id===id);
       if(!r) return null;
       const prevStatus = r.status;
+      // v55 — ENTREGA BLINDADA (capa de datos): Entregada SOLO con foto de
+      // firma (la foto llega SIEMPRE en el mismo patch del flujo oficial:
+      // completada → foto → entregada). Un patch que intente Entregada sin
+      // firma se rechaza y se conserva el estado previo.
+      if(patch && patch.status === 'delivered' && !patch.signaturePhoto
+         && !r.signaturePhoto && prevStatus !== 'delivered'){
+        patch = { ...patch };
+        delete patch.status;
+      }
       Object.assign(r, patch, { updatedAt: Date.now() });
+      // v56 — mantener el alias clientPhoto sincronizado con clientPhotos[0]
+      // (el array es la fuente de verdad tras la migración multi-foto).
+      if(Array.isArray(r.clientPhotos)){
+        r.clientPhoto = r.clientPhotos[0] || null;
+      }
       if(r.status === 'delivered' && !r.deliveredAt) r.deliveredAt = Date.now();
       if(prevStatus === 'delivered' && r.status !== 'delivered') r.deliveredAt = null;
       save();
@@ -844,11 +886,44 @@ const DB = (() => {
     exportBlob(){
       return new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     },
+    // v56e — RESUMEN de la copia: se cuenta todo lo que viajará en el JSON
+    // para mostrárselo al técnico ANTES de exportar (saber qué protege).
+    exportSummary(){
+      let fotos = 0, audios = 0;
+      for(const r of data.repairs||[]){
+        fotos += (r.devicePhotos||[]).length + (r.clientPhotos||[]).length;
+        if(r.signaturePhoto) fotos++;
+        if(r.acceptAudio) audios++;
+      }
+      return {
+        repairs: (data.repairs||[]).length,
+        transactions: (data.transactions||[]).length,
+        fotos, audios,
+        settings: !!(data.settings),
+        bytes: JSON.stringify(data).length
+      };
+    },
+    // v56e — EXPORTAR ELIGIENDO UBICACIÓN (PC/Chrome/Edge): abre el selector
+    // de guardar-del-sistema en la carpeta que el técnico elija cada vez.
+    // Devuelve {ok, name} o lanza AbortError si cancela.
+    async exportWithPicker(){
+      if(!('showSaveFilePicker' in window)) throw new Error('no-soportado');
+      const fh = await window.showSaveFilePicker({
+        suggestedName: `taller-backup-${UI.fmtDateInput(Date.now())}.json`,
+        types: [{ description:'Copia de seguridad (JSON)', accept:{ 'application/json':['.json'] } }]
+      });
+      const w = await fh.createWritable();
+      await w.write(this.exportBlob());
+      await w.close();
+      return { ok:true, name: fh.name };
+    },
     exportJson(){
       const url = URL.createObjectURL(this.exportBlob());
       const a = document.createElement('a');
       a.href = url;
-      a.download = `taller-backup-${new Date().toISOString().slice(0,10)}.json`;
+      // v56d — nombre del backup con fecha LOCAL (antes toISOString=UTC,
+      // un día menos en América de madrugada/tarde).
+      a.download = `taller-backup-${UI.fmtDateInput(Date.now())}.json`;
       a.click();
       URL.revokeObjectURL(url);
     },

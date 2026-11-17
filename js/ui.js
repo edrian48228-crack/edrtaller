@@ -25,6 +25,109 @@ const UI = (() => {
     $('#modal').classList.remove('hidden');
   }
   function closeModal(){ $('#modal').classList.add('hidden'); $('#modalBody').innerHTML=''; }
+  // v54 — Reproductor de audio propio (sustituye al <audio controls> nativo).
+  // Motivo: en móviles el control nativo dentro de nuestros modales dibuja la
+  // barra de progreso CORRIDA (arrancaba "después de la mitad") porque la
+  // duración de un DataURL webm/ogg se conoce tarde y el motor no repinta el
+  // rail. Con el reproductor propio la barra es un div con ancho exacto:
+  // 0 % en el instante 0, sincronizado por timeupdate, y un input range
+  // invisible para arrastrar/retroceder con precisión.
+  // Uso: UI.audioPlayerHtml(id) devuelve el markup; UI.bindAudioPlayer(id, src)
+  // lo conecta. El formulario y el detalle lo usan.
+  function audioPlayerHtml(id){
+    return `
+      <div class="edr-audio" id="${id}">
+        <button type="button" class="edr-ap-btn" data-ap="play" aria-label="Reproducir">
+          <svg viewBox="0 0 24 24" class="edr-ap-play"><path d="M8 5v14l11-7z"/></svg>
+          <svg viewBox="0 0 24 24" class="edr-ap-pause" style="display:none"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
+        </button>
+        <div class="edr-ap-track" data-ap="track">
+          <div class="edr-ap-fill" data-ap="fill"></div>
+          <div class="edr-ap-knob" data-ap="knob"></div>
+          <input type="range" min="0" max="1000" step="1" value="0" data-ap="seek" aria-label="Posición del audio">
+        </div>
+        <span class="edr-ap-time" data-ap="time">0:00 / 0:00</span>
+      </div>`;
+  }
+  function bindAudioPlayer(id, src){
+    const root = document.getElementById(id);
+    if(!root || root._bound) return;
+    root._bound = true;
+    const btn  = root.querySelector('[data-ap="play"]');
+    const playIco  = root.querySelector('.edr-ap-play');
+    const pauseIco = root.querySelector('.edr-ap-pause');
+    const fill = root.querySelector('[data-ap="fill"]');
+    const knob = root.querySelector('[data-ap="knob"]');
+    const seek = root.querySelector('[data-ap="seek"]');
+    const time = root.querySelector('[data-ap="time"]');
+    const audio = new Audio(src);
+    audio.preload = 'metadata';
+    // v55 — Segunda capa del fix "reproduce desde la mitad": si el contenedor
+    // (webm de MediaRecorder) reporta duration=Infinity, medimos la duración
+    // real decodificando en memoria (AudioContext.decodeAudioData) y forzamos
+    // la posición de reproducción a 0 en cada arranque. seek/exact.
+    let knownDuration = 0;
+    const fixInfiniteDuration = () => {
+      if(isFinite(audio.duration) && audio.duration>0){ knownDuration = audio.duration; return; }
+      if(knownDuration > 0) return;
+      try{
+        const byteStr = atob(String(src).split(',')[1] || '');
+        const bytes = new Uint8Array(byteStr.length);
+        for(let i=0;i<byteStr.length;i++) bytes[i] = byteStr.charCodeAt(i);
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC) return;
+        const ctx = new AC();
+        ctx.decodeAudioData(bytes.buffer, buf=>{
+          knownDuration = buf.duration;
+          try{ ctx.close(); }catch(_){}
+          paint();
+        }, ()=>{ try{ ctx.close(); }catch(_){} });
+      }catch(e){}
+    };
+    const dur = () => isFinite(audio.duration) && audio.duration>0 ? audio.duration : knownDuration;
+    const fmt = s => {
+      if(!isFinite(s)) return '0:00';
+      s = Math.max(0, Math.floor(s));
+      return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+    };
+    function paint(){
+      const d = dur();
+      const p = d>0 ? Math.min(1, audio.currentTime/d) : 0;
+      const pct = (p*100).toFixed(3) + '%';
+      if(fill) fill.style.width = pct;
+      if(knob) knob.style.left = pct;
+      if(time) time.textContent = fmt(audio.currentTime) + ' / ' + fmt(d);
+    }
+    audio.addEventListener('loadedmetadata', ()=>{ fixInfiniteDuration(); paint(); });
+    audio.addEventListener('timeupdate', paint);
+    audio.addEventListener('ended', ()=>{
+      playIco.style.display = ''; pauseIco.style.display = 'none';
+      paint();
+    });
+    btn.addEventListener('click', ()=>{
+      if(audio.paused){
+        // NUNCA arrancar "desde la mitad": la primera reproducción parte de 0.
+        if(!isFinite(audio.duration)){ try{ audio.currentTime = 0; }catch(_){} }
+        audio.play().then(()=>{
+          if(!isFinite(audio.duration) || audio.duration===0){
+            // Infinity: reposicionar a 0 tras arrancar (Chromium re-ancla)
+            try{ audio.currentTime = 0; }catch(_){}
+          }
+          fixInfiniteDuration();
+        }).catch(()=>{});
+      } else { audio.pause(); }
+    });
+    audio.addEventListener('play',  ()=>{ playIco.style.display='none'; pauseIco.style.display=''; });
+    audio.addEventListener('pause', ()=>{ playIco.style.display='';   pauseIco.style.display='none'; });
+    seek.addEventListener('input', ()=>{
+      const d = dur();
+      if(d>0) audio.currentTime = Math.min(d, (Number(seek.value)/1000) * d);
+      paint();
+    });
+    fixInfiniteDuration();
+    paint();
+    return audio;
+  }
   function escape(s){ return (s==null?'':String(s)).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
   function fmtDate(ts){
     if(!ts) return '—';
@@ -37,8 +140,23 @@ const UI = (() => {
   }
   function fmtDateInput(ts){
     if(!ts) return '';
+    // v56d — FECHA LOCAL: toISOString() convierte a UTC y en husos
+    // negativos (América) o madrugadas europeas desplaza la fecha un día
+    // (registrar HOY aparecía como AYER o como OTRO MES al final del mes).
+    // Se construye la cadena YYYY-MM-DD con los componentes LOCALES.
     const d = new Date(ts);
-    return d.toISOString().slice(0,10);
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const dd = String(d.getDate()).padStart(2,'0');
+    return y + '-' + m + '-' + dd;
+  }
+  function localNoon(str){
+    // v56d — parseo de un input type="date" ('YYYY-MM-DD') en el huso LOCAL:
+    // new Date('YYYY-MM-DD') interpreta medianoche UTC; añadimos T12:00
+    // (sin zona) para anclar al mediodía local del día elegido, inmune a
+    // husos ±13h y al horario de verano.
+    if(!str) return Date.now();
+    return new Date(str + 'T12:00:00').getTime();
   }
   function statusLabel(s){
     return ({
@@ -214,6 +332,42 @@ const UI = (() => {
     }
     return '';
   }
+  // v55 — FIX "el grabado se reproduce desde la mitad":
+  // Chromium graba webm SIN duración en la cabecera → <audio>.duration llega
+  // Infinity → el navegador posiciona la reproducción donde quiere (mitad).
+  // Solución estándar (la misma de MediaRecorder docs/StackOverflow 2024):
+  // parchear los bytes EBML del cluster 0 con la duración REAL medida con
+  // reloj (startedAt→stop) en float doble de 8 bytes. Si algo falla, queda
+  // el fix del reproductor (seekToStart + duration calculada).
+  function patchWebmDuration(blob, durationMs){
+    return new Promise(resolve=>{
+      try{
+        // El header webm busca el elemento "Duration" (ID 0x04489) por
+        // delante: 0000 0000-ish. Estrategia mínima robusta: convertir a
+        // ArrayBuffer, localizar los 8 bytes del valor float de Duration
+        // (patrón 0x4489 + longitud 8 en el Info del segmento) y escribir.
+        blob.arrayBuffer().then(buf=>{
+          const u8 = new Uint8Array(buf);
+          // Buscar EBML-ID 0x2AD7B1 (TimecodeScale) NO hace falta: Duration
+          // es 0x4489 seguido de 0x88 (longitud 8, doble).
+          for(let i=0;i<u8.length-10;i++){
+            if(u8[i]===0x44 && u8[i+1]===0x89 && u8[i+2]===0x88){
+              // verificar que no sea "Duration=0" ya correcta
+              const dv = new DataView(buf, i+3, 8);
+              const cur = dv.getFloat64(0, true);
+              if(isFinite(cur) && cur>0 && cur<1e12){ break; }
+              // Escribir la duración real en nanoseundos-escala del reloj
+              // webm (TimecodeScale por defecto 1ms → nanosegundos: x1e6)
+              const ns = durationMs * 1e6;
+              dv.setFloat64(0, ns, true);
+              break;
+            }
+          }
+          resolve(new Blob([u8], { type: blob.type }));
+        }).catch(()=> resolve(blob));
+      }catch(e){ resolve(blob); }
+    });
+  }
   function createRecorder(){
     let mediaRec = null, chunks = [], stream = null, startedAt = 0, tickTimer = null;
     return {
@@ -254,8 +408,14 @@ const UI = (() => {
           mediaRec.onstop = async ()=>{
             try{
               const type = mediaRec.mimeType || 'audio/webm';
-              const blob = new Blob(chunks, { type });
+              let blob = new Blob(chunks, { type });
               if(stream) stream.getTracks().forEach(t=>t.stop());
+              // v55 — duración real medida con reloj (no Infinity) y parche
+              // de la cabecera webm para que cualquier reproductor la lea.
+              const durationMs = Math.max(0, Date.now() - startedAt);
+              if(/webm/i.test(type)){
+                try{ blob = await patchWebmDuration(blob, durationMs); }catch(_){}
+              }
               res(await blobToDataUrl(blob));
             }catch(e){ rej(e); }
           };
@@ -271,5 +431,5 @@ const UI = (() => {
       isRecording(){ return mediaRec && mediaRec.state==='recording'; }
     };
   }
-  return { $, toast, openModal, closeModal, escape, fmtDate, fmtDateTime, fmtDateInput, statusLabel, resizeImage, blobToDataUrl, createRecorder, capitalizeWords, attachAutoCapitalize, openImageViewer, renderBrand, phoneClean, phoneWa, phoneSms, confirmDialog };
+  return { $, toast, openModal, closeModal, escape, fmtDate, fmtDateTime, fmtDateInput, localNoon, statusLabel, resizeImage, blobToDataUrl, createRecorder, capitalizeWords, attachAutoCapitalize, openImageViewer, renderBrand, phoneClean, phoneWa, phoneSms, confirmDialog, audioPlayerHtml, bindAudioPlayer };
 })();

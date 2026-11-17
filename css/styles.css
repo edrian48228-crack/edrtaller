@@ -506,6 +506,8 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .photo-add-btn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
 .photo-grid.single{grid-template-columns:1fr;max-width:200px}
 .detail-photo-strip{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px}
+.client-photos-strip{display:flex;gap:8px;overflow-x:auto;margin-bottom:14px;padding-bottom:4px}
+.client-photos-strip img{width:84px;height:84px;flex:0 0 auto;object-fit:cover;border-radius:8px;border:1px solid var(--border);cursor:zoom-in}
 .detail-photo-strip img{height:140px;border-radius:10px;border:1px solid var(--border);flex-shrink:0}
 .chip-list{display:flex;flex-wrap:wrap;gap:6px}
 .chip-static{
@@ -848,13 +850,37 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
   padding:6px 2px;font-size:14px;font-weight:600;outline:none
 }
 .part-row .pr-name:focus{border-bottom-color:var(--primary-glow)}
-.part-row .pr-nums{display:grid;grid-template-columns:1fr 1.4fr;gap:6px}
+/* v56b — AÑADIR PIEZA sin desborde: los controles se ciñen al ancho de la
+   fila (min-width:0 para que el grid pueda comprimirlos y width:100% para
+   llenar la celda en vez de conservar su ancho intrínseco; el select baja
+   su padding y los números crecen un poco en pantallas estrechas para
+   seguir siendo cómodos). */
+.part-row .pr-name{width:100%;max-width:100%;min-width:0}
+.part-row .select-elegant{margin-bottom:0}
+.part-row .select-elegant select{padding:10px 34px 10px 12px;font-size:13.5px}
+.part-row .pr-nums{min-width:0}
+@media(max-width:520px){
+  .part-row{padding:8px}
+  .part-row .pr-nums input{font-size:14px;padding:7px 6px}
+}
 .part-row .pr-nums input{
   background:var(--surface);border:1px solid var(--border);border-radius:8px;
-  color:var(--text);padding:6px 8px;font-size:13px;outline:none
+  color:var(--text);padding:6px 8px;font-size:13px;outline:none;
+  width:100%;max-width:100%;min-width:0
 }
 .part-row .pr-nums input:focus{border-color:var(--primary-glow)}
 .part-row .pr-rm{align-self:center;color:#ff9b8b}
+/* v56b — botón «Eliminar pieza» con etiqueta al pie de cada fila: más
+   descubrible que el solo icono lateral, mismo data-act de borrado. */
+.part-row .pr-del{
+  display:inline-flex;align-items:center;gap:6px;
+  background:transparent;border:1px solid var(--border);border-radius:9px;
+  color:#ff9b8b;padding:6px 10px;font-size:12.5px;font-weight:600;
+  cursor:pointer;align-self:flex-start;margin-top:2px
+}
+.part-row .pr-del .ico{width:15px;height:15px}
+.part-row .pr-del:hover{border-color:#ff9b8b;background:rgba(255,107,107,.08)}
+.part-row .pr-del:active{transform:scale(.97)}
 .parts-summary{
   margin-top:10px;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
   padding:8px 12px;border-radius:10px;
@@ -1549,3 +1575,77 @@ html,body{max-width:100%;overflow-x:hidden}
   border-color:#a33;
   box-shadow:0 0 0 3px rgba(170,51,51,.18);
 }
+
+/* === v54: Reproductor de audio propio (barra correcta desde 0) === */
+.edr-audio{
+  display:flex;align-items:center;gap:10px;
+  background:rgba(255,255,255,.04);
+  border:1px solid var(--border);border-radius:12px;
+  padding:8px 10px;margin:6px 0 10px
+}
+.edr-ap-btn{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  border:none;cursor:pointer;
+  background:linear-gradient(135deg,var(--primary-glow),var(--primary-2));
+  color:#fff;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 3px 10px rgba(155,42,42,.35)
+}
+.edr-ap-btn svg{width:20px;height:20px;fill:#fff}
+.edr-ap-btn:active{transform:scale(.95)}
+.edr-ap-track{
+  position:relative;flex:1;height:22px;cursor:pointer;
+  display:flex;align-items:center;touch-action:pan-y
+}
+.edr-ap-track::before{
+  content:'';position:absolute;left:0;right:0;height:5px;border-radius:99px;
+  background:rgba(255,255,255,.12)
+}
+.edr-ap-fill{
+  position:absolute;left:0;height:5px;width:0%;border-radius:99px;
+  background:linear-gradient(90deg,var(--primary-glow),#ff7b54);
+  transition:width .12s linear
+}
+.edr-ap-knob{
+  position:absolute;left:0%;width:13px;height:13px;border-radius:50%;
+  background:#fff;border:2px solid var(--primary-glow);
+  transform:translateX(-6.5px);
+  box-shadow:0 1px 4px rgba(0,0,0,.4);
+  transition:left .12s linear;pointer-events:none
+}
+.edr-ap-track input[type="range"]{
+  position:absolute;inset:0;width:100%;height:100%;margin:0;
+  opacity:0;cursor:pointer;-webkit-appearance:none;appearance:none
+}
+.edr-ap-time{
+  font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+  min-width:78px;text-align:right;flex-shrink:0
+}
+/* === v54: Navegación superior rápida (ir al final / volver arriba) === */
+.top-jump{
+  position:fixed;z-index:30;right:14px;
+  bottom:calc(110px + env(safe-area-inset-bottom));
+  width:42px;height:42px;border-radius:50%;
+  border:1px solid var(--border);cursor:pointer;
+  background:var(--surface);color:var(--text);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 6px 18px rgba(0,0,0,.45);
+  opacity:0;pointer-events:none;
+  transform:translateY(8px) scale(.9);
+  transition:opacity .25s ease, transform .25s ease
+}
+.top-jump.show{opacity:1;pointer-events:auto;transform:none}
+.top-jump svg{width:22px;height:22px}
+.top-jump:active{transform:scale(.92)}
+/* === v54: Franja de firma del cliente (entrega) === */
+.sig-shot{
+  position:relative;border-radius:12px;overflow:hidden;
+  border:1px dashed rgba(232,196,106,.5);
+  background:rgba(232,196,106,.06)
+}
+.sig-shot img{display:block;width:100%;max-height:240px;object-fit:contain;background:#fff}
+.sig-shot .sig-remove{
+  position:absolute;top:6px;right:6px;width:30px;height:30px;border-radius:50%;
+  border:none;cursor:pointer;background:rgba(0,0,0,.62);color:#fff;
+  display:flex;align-items:center;justify-content:center
+}
+.sig-shot .sig-remove svg{width:16px;height:16px;fill:#fff}

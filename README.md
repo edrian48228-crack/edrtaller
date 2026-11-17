@@ -1,8 +1,185 @@
-# Taller — PWA de reparaciones (v5.7)
+# Taller — PWA de reparaciones (v6.2.4)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## v6.2.4 — Copia de seguridad en la ubicación que elijas
+
+- **«Elegir ubicación y exportar todo…»**: nuevo botón principal en
+  *Administración → Copia local (manual)*. Antes de exportar muestra un
+  resumen con lo que contendrá la copia (reparaciones, compras/ventas,
+  fotos, audios, ajustes y contraseña, y el peso en KB), abre el selector
+  de guardar del sistema y escribe el archivo
+  `taller-backup-FECHA.json` en la carpeta que TÚ decidas — memoria,
+  unidad USB, carpeta de la nube, escritorio… — con el nombre editable.
+  Al terminar confirma con el nombre del archivo guardado.
+- **Copia COMPLETA**: el JSON lleva todo el sistema en un único archivo:
+  reparaciones con fotos de dispositivo/cliente, firmas y audios de
+  aceptación embebidos, movimientos de compra/venta, catálogos, ajustes y
+  la contraseña. Se comprobó restaurándolo en un sistema vacío: todo
+  vuelve tal cual (reparaciones, fotos, audios, movimientos y ajustes).
+- **En móvil**: los navegadores de teléfono no permiten elegir carpeta;
+  el botón avisa de ello y deja la copia en Descargas/Archivos con el
+  consejo de moverla a donde quieras (memoria, nube, PC).
+- El «Exportar JSON» clásico sigue disponible para la descarga rápida.
+
+## v6.2.3 — Fechas corregidas (zonas horarias)
+
+- **Bug serio corregido**: al registrar una reparación, compra o venta con
+  fecha de HOY, la app podía mostrarla como de AYER o de OTRO MES. Causa:
+  dos conversiones a UTC mezcladas con fechas locales. El campo de fecha
+  se rellenaba con `toISOString()` (UTC): en América (UTC-4/-6) por la
+  tarde-noche «hoy» se volvía MAÑANA y a fin de mes saltaba al mes
+  siguiente; en Europa de madrugada (00:00-02:00) se volvía AYER. Además,
+  compras/ventas guardaban la fecha elegida como medianoche UTC y la
+  lista la mostraba en hora local: en todo el hemisferio oeste aparecía
+  UN DÍA MENOS.
+- **Convención única**: todas las fechas ahora se rellenan, guardan y
+  muestran en la zona horaria local del técnico. Verificado a 9 horas
+  distintas del día (00:00-23:00) en zonas críticas (UTC-6, UTC+1,
+  UTC+13), incluido el límite de fin de mes, en reparaciones, compras y
+  ventas, y con edición de la fecha de registros ya existentes para
+  corregir los viejos si hiciera falta. El nombre del archivo de respaldo
+  también usa la fecha local.
+- Los registros anteriores no se tocan automáticamente (no se arriesgan
+  datos): si alguna fecha vieja se ve mal, ábrela y ajusta la fecha a mano.
+
+## v6.2.2 — «Quitar de esta reparación», alcance claro
+
+- **Precisión**: al eliminar una pieza desde una reparación (la que
+  acabas de añadir o cualquiera de esa reparación) la pieza sale ÚNICAMENTE
+  de esa reparación. La compra registrada en Compra/Venta y el inventario
+  del sistema no se tocan, y las unidades vuelven a estar disponibles de
+  inmediato para otra reparación. Se comprobó de punta a punta:
+  comprar → usar en reparación → quitar → compra intacta, inventario
+  devuelto.
+- **Sin ambigüedad**: el botón antes decía «Eliminar pieza» junto al
+  selector de todas tus piezas compradas, lo que podía leerse como borrar
+  la pieza del inventario. Ahora dice «Quitar de esta reparación», el
+  icono lateral aclara su alcance al mantenerlo pulsado, y la sección
+  explica en una línea: *Quitar una pieza aquí solo la saca de esta
+  reparación; la compra y el inventario de Compra/Venta no se tocan*.
+
+## v6.2.1 — Sección «Añadir pieza» a pantalla completa
+
+- **Corregido el desborde**: en pantallas de móvil estrechas, los cuadros
+  de texto de la sección *Añadir pieza* del formulario de reparación se
+  salían por la derecha (la fila necesitaba 404px en una pantalla de
+  375px). Los controles ahora se ciñen al ancho disponible: el selector
+  de pieza, la cantidad y el costo unitario llenan su celda en lugar de
+  conservar su ancho intrínseco, y el bloque completo queda dentro de la
+  pantalla también en móviles de 320px.
+- **Botón «Eliminar pieza»**: cada pieza añadida muestra ahora un botón
+  con etiqueta *Eliminar pieza* (papelera) al pie de su fila, además del
+  icono lateral que ya existía. Eliminar quita la pieza del formulario y
+  del registro; al quitar la última, la sección vuelve a mostrar
+  «Reparación sin cambio de pieza».
+
+## v6.2 — Multi-foto del cliente e importación segura
+
+- **Varias fotos del cliente**: ya no hay una sola foto — ahora puedes
+  añadir varias (la foto del cliente y el carné de identidad por delante
+  y por detrás, hasta 8), desde la cámara o de la galería en lote.
+  Miniaturas con borrado individual, contador en vivo y visor ampliado
+  al tocarlas, en el formulario y en el detalle. Los datos antiguos con
+  una sola foto se migran automáticamente; la primera foto se mantiene
+  como portada en las tarjetas y el ticket, y todo viaja en la
+  sincronización como siempre.
+- **Importar JSON con protección total**: al abrir o cargar un archivo
+  (botón Importar o "Cargar desde el archivo" de la ubicación local) la
+  app muestra primero un resumen del archivo frente a tus datos
+  actuales. "Añadir al existente" fusiona sin duplicar (y avisa de lo
+  que ya existía); "Reemplazar TODO" exige dos confirmaciones
+  consecutivas mostrando exactamente cuántas reparaciones y movimientos
+  con sus fotos, audios y firmas se van a perder. Los datos ya guardados
+  nunca se pierden en silencio — pensado para actualizaciones del
+  sistema sin miedo a perder lo almacenado.
+
+## v6.1.1 — Estabilidad de sincronización (correcciones de la batería de pruebas offline/online)
+
+Dos correcciones encontradas en las pruebas E2E completas de sincronización:
+
+- **Borrado remoto adoptado**: si otro dispositivo borraba una reparación y
+  subía su índice sin ella, este dispositivo conservaba la reparación y la
+  VOLVÍA A SUBIR en el siguiente push (el borrado "resucitaba" en la nube).
+  Ahora el pull detecta que la reparación ya fue subida antes y ya no existe
+  en el repositorio ni en el índice, y adopta el borrado limpiamente.
+- **Ajustes a salvo con índice corrupto**: si el index.json remoto llegaba
+  corrupto o vacío, el pull restauraba los ajustes de FÁBRICA (garantía,
+  nombre del taller, logo, WhatsApp, catálogos) y el push siguiente subía
+  esos valores por defecto a la nube. Ahora los ajustes locales se conservan
+  íntegros y el push repara el índice con los valores correctos.
+
+Batería de pruebas: 94 verificaciones E2E en navegador (registro, edición,
+estados y firma, borrado de reparaciones, ventas, compras, ajustes de
+administración; offline, online, transiciones en ambos sentidos, conflictos
+de SHA, índice corrupto, rate-limit y doble sincronización simultánea),
+69 pruebas de regresión Node y persistencia tras recarga — todo en verde.
+
+## Novedades v6.1 — Grabador automático, entrega blindada y fix del audio
+
+- **Grabación automática**: al abrir el registro de una reparación nueva la
+  grabación del audio de aceptación **arranca sola** (sin pulsar nada); si el
+  micrófono no está disponible, el botón manual sigue ahí. Al **registrar** la
+  reparación, la grabación en curso se **detiene y se guarda sola** con la
+  reparación; si sales del formulario sin guardar, el grabador se cancela y
+  libera el micrófono.
+- **Fix "el audio se reproducía desde la mitad"** (causa raíz): los webm de
+  MediaRecorder llegan **sin duración** en la cabecera ( Chromium reporta
+  `Infinity`), y el motor posiciona la reproducción donde quiere. Ahora, al
+  detener la grabación se **parchea la cabecera EBML con la duración real**
+  (verificado: 5200 ms escritos con exactitud) y el reproductor, además,
+  calcula la duración decodificando y **siempre arranca en 0**.
+- **Entrega blindada (regla inviolable)**: una reparación llega a
+  *Entregada* **solo** pasando por *Completada* y tomando la **foto de la
+  firma del cliente**; con la foto guardada pasa **automáticamente a
+  Entregada** (sellando el inicio de la garantía). Cualquier otra vía está
+  bloqueada en 4 capas: el selector del detalle la rechaza con mensaje claro,
+  el formulario de edición no puede poner Entregada, el alta no ofrece la
+  opción y la capa de datos (`DB`) rechaza el cambio sin firma. Las
+  reparaciones **ya entregadas** del historial se conservan intactas.
+
+## Novedades v6 — Configuración cifrada, firma de entrega y garantía de 7 días
+
+- **La configuración viaja CIFRADA del servidor al cliente** (AES-GCM-256 +
+  PBKDF2-SHA256, 210.000 iteraciones): al activar "Datos hacia otros
+  dispositivos" defines una **frase secreta del taller**; desde entonces
+  `config.json` se publica encriptado (nada legible en el repo ni en Pages —
+  ni usuario, ni repositorio, ni carpeta, ni token). Cualquier móvil del
+  taller escribe la frase UNA vez y la app **descifra y autorrellena los
+  cuadros** de Administración (usuario/repo/rama/carpeta e incluso el token
+  si decides incluirlo). Botón **"🔐 Traer configuración del taller"** en
+  Administración → Sincronización GitHub para traerla y rellenar en cualquier
+  momento. Una frase incorrecta se rechaza limpiamente (GCM autenticado).
+- **Garantía por defecto de 7 días** para todas las reparaciones nuevas (las
+  ya registradas conservan su garantía original; configurable en Admin).
+- **Firma del cliente al entregar**: cuando pasas una reparación a
+  *Completada* se activa la captura de la **foto de la firma**; al tomarla,
+  la reparación pasa **automáticamente a Entregada** (sellando la fecha de
+  inicio de la garantía). Puedes entregar sin firma o dejarla en Completada
+  para capturarla luego; la firma queda guardada en la reparación y se
+  muestra (ampliable) en su detalle.
+- **Reproductor de audio nuevo**: la barra de progreso empieza en 0 y se
+  puede arrastrar para adelantar/retroceder con precisión (el control nativo
+  dibujaba la barra corrida en móviles). Play/pausa, tiempo y diseño propio.
+- **Navegación rápida arriba**: botón flotante "ir al final" que se
+  transforma en "volver arriba" al llegar abajo — sin cambiar el alto del
+  sistema —, con desplazamiento suave y respeto de `prefers-reduced-motion`.
+- **Salir con confirmación**: el botón superior de salida pregunta antes de
+  cerrar la sesión (evita salidas accidentales).
+- **Resumen/Contabilidad**: el bloque "Contabilidad e ingresos" ahora llega
+  **abierto** con el **Total histórico** y sus movimientos visibles de
+  entrada (antes estaba plegado y parecía que faltaba).
+- **Splash de carga aún más vistoso**: anillo de progreso circular con
+  porcentaje, logo con brillo y halo pulsante, texto con degradado —
+  manteniendo el arranque rápido (pinta antes de descargar JS).
+- **Compatibilidad total con tus datos existentes**: todas las
+  incorporaciones son aditivas (firma, configuración cifrada, garantía);
+  ninguna migración pisa o borra reparaciones, compras, ventas, fotos,
+  audios ni ajustes ya guardados. El `passwordHash` y las preguntas siguen
+  SIN viajar al repositorio (y ahora tampoco la frase secreta viaja en el
+  índice: solo dentro del config cifrado).
 
 ## Novedades v5.7 — Arranque rápido + presentación profesional de carga
 

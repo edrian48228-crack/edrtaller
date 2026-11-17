@@ -26,6 +26,61 @@
 //    visibility), además del arranque.
 // =============================================================
 
+// =============================================================
+// CryptoCfg v54 — cifrado de la configuración compartida.
+// AES-GCM-256 con clave derivada PBKDF2-SHA256 (210.000
+// iteraciones, salt aleatorio por archivo; recomendación OWASP
+// para PBKDF2-SHA256). Formato: "EDR-ENC1:<ivB64>:<saltB64>:<ctB64>"
+// La GCM aporta integridad autenticada: una letra mal escrita en
+// la frase produce error de descifrado, no basura legible.
+// =============================================================
+const CryptoCfg = (() => {
+  const ITER = 210000;
+  const PREFIX = 'EDR-ENC1';
+  const te = new TextEncoder();
+
+  async function deriveKey(phrase, saltRaw){
+    const base = await crypto.subtle.importKey(
+      'raw', te.encode(phrase), 'PBKDF2', false, ['deriveKey']
+    );
+    return crypto.subtle.deriveKey(
+      { name:'PBKDF2', hash:'SHA-256', salt: saltRaw, iterations: ITER },
+      base, { name:'AES-GCM', length: 256 }, false, ['encrypt','decrypt']
+    );
+  }
+
+  async function encrypt(plainText, phrase){
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv   = crypto.getRandomValues(new Uint8Array(12));
+    const key  = await deriveKey(phrase, salt);
+    const ct   = await crypto.subtle.encrypt(
+      { name:'AES-GCM', iv }, key, te.encode(plainText)
+    );
+    const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+    return `${PREFIX}:${b64(iv)}:${b64(salt)}:${b64(ct)}`;
+  }
+
+  async function decrypt(payload, phrase){
+    const parts = String(payload||'').split(':');
+    if(parts.length !== 4 || parts[0] !== PREFIX){
+      throw new Error('Formato de configuración cifrada no reconocido');
+    }
+    const un64 = s => Uint8Array.from(atob(s), c=>c.charCodeAt(0));
+    const key = await deriveKey(phrase, un64(parts[2]));
+    const pt  = await crypto.subtle.decrypt(
+      { name:'AES-GCM', iv: un64(parts[1]) }, key, un64(parts[3])
+    );
+    return new TextDecoder().decode(pt);
+  }
+
+  function isEncrypted(txt){
+    return typeof txt === 'string' && txt.startsWith(PREFIX + ':');
+  }
+
+  return { encrypt, decrypt, isEncrypted, PREFIX };
+})();
+window.CryptoCfg = CryptoCfg;
+
 const GitLog = (() => {
   const MAX = 300;
   const entries = [];
@@ -332,7 +387,10 @@ const GitSync = (() => {
         //    lugar viaja githubShared (sin token) para que otros móviles se
         //    conecten sin teclear nada.
         github: { ...d.settings.github, token:'', lastSyncAt:null, lastSha:null },
-        githubShared: d.settings.githubShared || null
+        // v54: githubShared viaja, pero SIN la frase secreta ni el flag de
+        // token (esos dos solo existen dentro del config.json CIFRADO).
+        githubShared: (()=>{ const sh = d.settings.githubShared; if(!sh) return null;
+          const { phrase, shareToken, ...safe } = sh; return safe; })()
       },
       transactions: d.transactions || [],
       repairIds: ids
@@ -340,17 +398,41 @@ const GitSync = (() => {
   }
   // Archivo de configuración publicado para el bootstrap de otros
   // dispositivos: se sirve por GitHub Pages (público, sin token) en
-  // <user>.github.io/<repo>/<path>/config.json. NUNCA incluye el token.
+  // <user>.github.io/<repo>/<path>/config.json.
+  //
+  // v54 — CONFIG CIFRADA servidor→cliente: el JSON ya NO viaja en claro
+  // por Pages (cualquiera con la URL podía leer usuario/repositorio/carpeta
+  // y el WhatsApp). Ahora viaja AES-GCM-256; la clave se deriva con
+  // PBKDF2-SHA256 (210.000 iteraciones, recomendación OWASP 2023+) de una
+  // FRASE SECRETA DEL TALLER que el dueño define al activar "compartir".
+  // Los móviles que la conozcan descifran y AUTORRELLENAN los cuadros de
+  // Administración (usuario/repo/rama/carpeta e incluso el token si el
+  // dueño decidió compartirlo) — ya nadie rellena nada a mano.
+  // Retrocompatible: si el archivo aún es JSON plano (kind taller-config),
+  // se lee como antes y el próximo push lo re-publica cifrado.
   function buildConfigPayload(){
     const d = DB.all;
     const sh = d.settings.githubShared || {};
-    return JSON.stringify({
-      kind:'taller-config', schema:1,
+    const gh = d.settings.github || {};
+    const plain = {
+      kind:'taller-config', schema:2,
       user: sh.user || '', repo: sh.repo || '',
       branch: sh.branch || 'main', path: sh.path || '',
       whatsapp: sh.whatsapp || '',
+      // v54: con consentimiento explícito, el token del PC viaja DENTRO del
+      // cifrado (nunca en claro) para que los móviles del taller puedan
+      // editar sin crear el suyo. Es un repo privado del taller: quien tenga
+      // la frase secreta es de confianza.
+      token: (sh.shareToken && gh.token) ? gh.token : '',
       createdAt: d.settings.githubSharedAt || null
-    }, null, 2);
+    };
+    const phrase = sh.phrase || '';
+    if(!phrase){
+      // Sin frase configurada: publicar el formato clásico (plain) para
+      // no romper móviles antiguos; la UI pide activar la frase.
+      return JSON.stringify(plain, null, 2);
+    }
+    return 'EDR-ENC1:' + CryptoCfg.encrypt(JSON.stringify(plain), phrase);
   }
 
   // ---------- Detección de cambios (deltas) ----------
@@ -982,11 +1064,37 @@ const GitSync = (() => {
       // detectar conexión borraría la reparación recién registrada en este dispositivo.
       const remoteIds = new Set(remoteRepairs.map(x=>x.raw.id));
       let addedLocal = 0;
+      // v55b — BORRADO REMOTO ADOPTADO: distingue dos casos que antes eran
+      // iguales ("la local no aparece en el repo"):
+      //   1) NUNCA subida (sin sha en caché) → conservar (anti-pérdida).
+      //   2) YA subida antes (sha en caché) y el archivo YA NO está en el
+      //      repo → OTRO dispositivo la borró y subió un index sin ella:
+      //      adoptar el borrado y limpiar su caché. Sin esto, la reparación
+      //      "resucitaba" en el siguiente push (re-subida + re-listada en
+      //      el index del remoto, borrado invertido en el dispositivo PC).
+      let remoteDeleted = 0;
       for(const [id, loc] of localByIdNow){
         if(!remoteIds.has(id) && !knownDeleted.has(id)){
+          const wasPushed = !!lastHashes['sha:'+id];
+          if(wasPushed){
+            // El index remoto tampoco la lista (borrado confirmado por el
+            // otro dispositivo): solo se adopta si estamos viendo un index
+            // remoto válido; sin index, la conservamos (cauta).
+            const idxKnowsIt = idxData ? (idxData.repairIds||[]).includes(id) : null;
+            if(idxData && idxKnowsIt === false){
+              remoteDeleted++;
+              delete lastHashes['r:'+id];
+              delete lastHashes['sha:'+id];
+              continue; // NO se añade al dataset final: adopta el borrado
+            }
+          }
           pulledRepairs.push(loc);
           addedLocal++;
         }
+      }
+      if(remoteDeleted > 0){
+        saveHashCache();
+        GitLog.warn('remote-del', `${remoteDeleted} reparación(es) borrada(s) en otro dispositivo — borrado adoptado.`);
       }
       if(addedLocal > 0){
         GitLog.warn('local-new', `Conservando ${addedLocal} reparación(es) local(es) aún no subida(s) a GitHub.`);
@@ -1007,6 +1115,12 @@ const GitSync = (() => {
       }
 
       // --- Contadores: máximo entre remoto y local (nunca hacia atrás) ---
+      // v55b — INDEX CORRUPTO/AUSENTE: si idxData es null (JSON inválido o
+      // aún sin index en el repo), la rama antigua hacía replaceAll SIN
+      // settings → la configuración local (garantía, appName, logo, WhatsApp,
+      // catálogos, creador) volvía a FÁBRICA y el push siguiente propagaba
+      // los defaults a la nube (pérdida real de settings). Ahora, sin
+      // índice válido, se conservan los settings LOCALES completos.
       const base = idxData ? {
         schemaVersion: Math.max(idxData.schemaVersion||0, DB.all.schemaVersion||0),
         settings: idxData.settings || {},
@@ -1017,6 +1131,12 @@ const GitSync = (() => {
         txCounter: Math.max(idxData.txCounter || 1, DB.all.txCounter || 1),
         repairs: pulledRepairs
       } : {
+        schemaVersion: DB.all.schemaVersion || 1,
+        // Índice corrupto/ausente: settings locales intactos (con transacciones
+        // fusionadas; github se restaura igual debajo por ser config de
+        // dispositivo).
+        settings: (DB.all.settings || {}),
+        transactions: pulledTx,
         counter: DB.all.counter || 1,
         txCounter: DB.all.txCounter || 1,
         repairs: pulledRepairs
@@ -1397,9 +1517,14 @@ const LocalFile = (() => {
     return await f.text();
   }
   async function loadFromFile(){
+    // v56 — esta API ya no reemplaza datos sin preguntar: si hay datos
+    // locales, devuelve el texto para que la UI (askImportMode) decida el
+    // modo; solo auto-importa cuando el dispositivo está VACÍO (primer uso).
     const text = await readText();
     if(text==null) return false;
-    return DB.importJson(text);
+    const empty = !(DB.repairs && DB.repairs.length);
+    if(empty) return DB.importJson(text);
+    return text; // el llamador debe pasarlo por askImportMode
   }
   loadHandle();
   return { isSupported, hasHandle, pickLocation, clearHandle, write, scheduleWrite, loadFromFile, readText, loadHandle };
@@ -1441,6 +1566,9 @@ const Bootstrap = (() => {
   // Descubre el config.json publicado. Probamos la ruta relativa al
   // despliegue actual (GitHub Pages sirve el repo tal cual), con un
   // par de variantes por si la app está en / o en /<repo>/.
+  // v54: el archivo puede llegar CIFRADO (EDR-ENC1). Se devuelve
+  // {cfg, encrypted}: si viene cifrado se resuelve después de pedir la
+  // frase al usuario (askPassphrase) — flujo de un solo paso.
   async function fetchSharedConfig(){
     const paths = [
       CONFIG_URL,
@@ -1452,13 +1580,95 @@ const Bootstrap = (() => {
         const resp = await fetch(p, { cache:'no-store' });
         if(!resp.ok){ GitLog.info('boot', p + ' → ' + resp.status); continue; }
         const txt = await resp.text();
+        if(CryptoCfg.isEncrypted(txt)){
+          return { encrypted:true, raw:txt };
+        }
         const cfg = JSON.parse(txt);
         if(cfg && cfg.kind === 'taller-config' && cfg.user && cfg.repo){
-          return cfg;
+          return { encrypted:false, cfg };
         }
       }catch(e){
         GitLog.info('boot', p + ' no disponible (' + (e.message||e) + ')');
       }
+    }
+    return null;
+  }
+
+  // v54 — Frase secreta del taller guardada en ESTE dispositivo.
+  // Si ya se conoce (la escribió el dueño en Admin o en un arranque
+  // anterior), se descifra sin preguntar. Si no, se pide UNA vez.
+  const PHRASE_KEY = 'taller_cfg_phrase';
+  function savedPhrase(){
+    try{ return localStorage.getItem(PHRASE_KEY) || ''; }catch(_){ return ''; }
+  }
+  function savePhrase(p){
+    try{ localStorage.setItem(PHRASE_KEY, String(p||'').trim()); }catch(_){}
+  }
+  function askPassphrase(){
+    return new Promise(resolve=>{
+      const wrap = document.createElement('div');
+      wrap.className = 'confirm-overlay';
+      wrap.innerHTML = `
+        <div class="confirm-card" role="dialog" aria-modal="true">
+          <h3>🔐 Frase secreta del taller</h3>
+          <p style="line-height:1.55">La configuración de la nube viaja
+          <b>cifrada</b>. Escribe la frase secreta que definió el dueño
+          del taller para descifrarla y conectar automáticamente.</p>
+          <div class="form-group" style="margin:0 0 12px">
+            <input type="password" id="edrPhrase" placeholder="Frase secreta" autocomplete="off" style="width:100%;box-sizing:border-box">
+          </div>
+          <div class="btn-row">
+            <button class="btn-secondary" data-act="no">Cancelar</button>
+            <button class="btn-primary" data-act="yes">Descifrar</button>
+          </div>
+        </div>`;
+      document.body.appendChild(wrap);
+      const inp = wrap.querySelector('#edrPhrase');
+      if(inp) setTimeout(()=>{ try{ inp.focus(); }catch(_){} }, 50);
+      const close = v => { wrap.remove(); resolve(v); };
+      wrap.addEventListener('click', e=>{
+        if(e.target===wrap){ close(null); return; }
+        const act = e.target.closest('[data-act]')?.dataset.act;
+        if(act==='yes') close(inp ? inp.value.trim() : '');
+        if(act==='no') close(null);
+      });
+      wrap.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){
+          e.preventDefault();
+          close(inp ? inp.value.trim() : '');
+        }
+      });
+    });
+  }
+
+  // v54 — Descifra el config con la frase (guardada o preguntada).
+  // Devuelve el objeto cfg o null si se canceló. La frase correcta se
+  // recuerda para no volver a pedirla en cada arranque.
+  async function decryptConfig(raw){
+    let phrase = savedPhrase();
+    let cfg = null;
+    for(let attempt=0; attempt<2 && !cfg; attempt++){
+      if(!phrase){
+        phrase = await askPassphrase();
+        if(phrase == null) return null; // cancelado
+      }
+      try{
+        cfg = JSON.parse(await CryptoCfg.decrypt(raw, phrase));
+        savePhrase(phrase);
+      }catch(e){
+        // Frase incorrecta (GCM autenticado: falla limpio)
+        GitLog.warn('boot', 'Frase incorrecta o archivo corrupto');
+        phrase = '';
+        if(attempt === 0){
+          try{ UI.toast('Frase secreta incorrecta'); }catch(_){}
+        }
+      }
+    }
+    if(!cfg) return null;
+    if(cfg && cfg.kind === 'taller-config'){
+      // Recordar también la frase correcta en settings (alias práctico
+      // para re-publicar desde este dispositivo si el dueño lo permite).
+      return cfg;
     }
     return null;
   }
@@ -1475,9 +1685,9 @@ const Bootstrap = (() => {
             <b>${UI.escape(cfg.user)}/${UI.escape(cfg.repo)}</b>.<br><br>
             Se descargarán todas las reparaciones, fotos, audios y movimientos
             y se mantendrán actualizados automáticamente.<br><br>
-            <span class="muted small">Podrás editarlos cuando añadas tu propio token de GitHub
-            (Administración → Sincronización GitHub). Sin token, este dispositivo
-            funciona en modo lectura.</span>
+            <span class="muted small">${cfg.token
+              ? 'La configuración llegó cifrada e incluye el token del taller: este dispositivo podrá editar desde ya.'
+              : 'Podrás editarlos cuando añades tu propio token de GitHub (Administración → Sincronización GitHub). Sin token, este dispositivo funciona en modo lectura.'}</span>
           </p>
           <div class="btn-row">
             <button class="btn-secondary" data-act="no">No, usar por separado</button>
@@ -1516,25 +1726,36 @@ const Bootstrap = (() => {
       }
     }catch(_){}
     try{
-      const cfg = await fetchSharedConfig();
-      if(!cfg){ markAsked(); return; }
+      const found = await fetchSharedConfig();
+      if(!found){ markAsked(); return; }
+      let cfg;
+      if(found.encrypted){
+        cfg = await decryptConfig(found.raw);
+        if(!cfg){ markAsked(); return; } // canceló la frase
+      } else {
+        cfg = found.cfg;
+      }
       markAsked();
       GitLog.ok('boot', 'Configuración del taller detectada: ' + cfg.user + '/' + cfg.repo);
       const adopt = await askAdopt(cfg);
       if(!adopt) return;
-      // Adoptar la configuración compartida (SIN token: modo lectura).
+      // Adoptar la configuración compartida. v54: si el dueño incluyó el
+      // token dentro del cifrado, este dispositivo ya puede EDITAR desde
+      // el primer minuto (no solo lectura).
       DB.updateGithub({
         enabled: true,
         user: cfg.user, repo: cfg.repo,
         branch: cfg.branch || 'main',
         path: cfg.path || 'taller-data',
-        token: '', autoSync: true
+        token: cfg.token || '', autoSync: true
       });
       DB.setGithubShared({
         user: cfg.user, repo: cfg.repo, branch: cfg.branch || 'main',
         path: cfg.path || 'taller-data', whatsapp: cfg.whatsapp || ''
       });
-      GitLog.ok('boot', 'Dispositivo conectado en modo lectura. Bajando datos…');
+      GitLog.ok('boot', cfg.token
+        ? 'Dispositivo conectado con permisos de edición (token incluido en el cifrado)'
+        : 'Dispositivo conectado en modo lectura. Bajando datos…');
       try{ UI.toast('Conectado con la nube del taller. Descargando datos…', 3500); }catch(_){}
       // Descarga inicial: GitHub Pages sirve el repo estático. Para el
       // índice y las reparaciones usamos raw.githubusercontent (público,

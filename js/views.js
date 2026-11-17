@@ -341,7 +341,7 @@ const Views = (() => {
       }
     }catch(e){ console.warn('form guard fail', e); }
 
-    const photos = { device: (r.devicePhotos||[]).slice(), client: r.clientPhoto || null };
+    const photos = { device: (r.devicePhotos||[]).slice(), client: Array.isArray(r.clientPhotos) ? r.clientPhotos.slice() : (r.clientPhoto ? [r.clientPhoto] : []) };
     let acceptAudio = r.acceptAudio || null;
     const naFields = (r.naFields||[]).slice();
     const parts = (r.parts||[]).map(p=>({ name:p.name||'', qty:p.qty||1, unitCost:p.unitCost!=null?p.unitCost:'' }));
@@ -364,7 +364,8 @@ const Views = (() => {
           <input name="clientName" id="clientNameInput" required autocapitalize="words" value="${escape(r.clientName||'')}">
         </div>
         <div class="form-group">
-          <label>Foto del cliente</label>
+          <label>Foto(s) del cliente <span class="muted small" id="clientPhotoCount"></span></label>
+          <p class="muted xsmall" style="margin:0 0 8px">Puedes añadir varias: foto del cliente y carné de identidad por delante y por detrás.</p>
           <div id="clientPhotoWrap" class="client-photo-wrap"></div>
           <div class="photo-add-row" id="clientPhotoAdd">
             <label class="photo-add-btn cam">
@@ -372,8 +373,8 @@ const Views = (() => {
               <input type="file" accept="image/*" capture="user" id="clientPhotoCam">
             </label>
             <label class="photo-add-btn gal">
-              ${ICONS.upload}<span>Galería</span>
-              <input type="file" accept="image/*" id="clientPhotoInput">
+              ${ICONS.upload}<span>Galería (varias)</span>
+              <input type="file" accept="image/*" multiple id="clientPhotoInput">
             </label>
           </div>
           <div class="client-audio-inline" id="audioBox" style="margin-top:14px"></div>
@@ -432,7 +433,7 @@ const Views = (() => {
             <label>Estado</label>
             <div class="select-elegant">
               <select name="status">
-                ${STATUS_KEYS.map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}
+                ${STATUS_KEYS.filter(s=> !(s==='delivered' && !existing)).map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)}</option>`).join('')}
               </select>
             </div>
           </div>
@@ -443,7 +444,7 @@ const Views = (() => {
           <div class="form-group">
             <label>Garantía (días desde la entrega)</label>
             <input name="warrantyDays" id="warrantyDaysInput" type="number" min="0" step="1" inputmode="numeric"
-              placeholder="Ej: 30" value="${r.warrantyDays!=null?r.warrantyDays:(existing?'':(DB.settings.defaultWarrantyDays||''))}">
+              placeholder="Ej: 7" value="${r.warrantyDays!=null?r.warrantyDays:(existing?'':(DB.settings.defaultWarrantyDays||''))}">
           </div>
         </div>
         <p class="muted small" id="warrantyHint" style="margin:-4px 2px 10px">La garantía comienza el día que marques el equipo como <b>Entregado</b>.</p>
@@ -453,6 +454,7 @@ const Views = (() => {
 
         ${sectionDivider('Piezas a sustituir')}
         <p class="muted small" style="margin:-4px 2px 10px">Selecciona la pieza que cambiaste (puerto, mica, batería, etc.). Solo aparecen las piezas que has <b>comprado</b> en <b>Compra/Venta</b>. El costo unitario se toma automáticamente de tus compras. Si no cambiaste ninguna pieza, deja la lista vacía.</p>
+        <p class="muted xsmall" style="margin:-6px 2px 10px">Quitar una pieza aquí <b>solo la saca de esta reparación</b>: la compra y el inventario de <b>Compra/Venta</b> no se tocan.</p>
         <div id="partsList" class="parts-list"></div>
         <button type="button" class="btn-secondary btn-inline" id="addPartBtn">${ICONS.plus} Añadir pieza</button>
         <div id="partsNoStock" class="muted small" style="margin-top:8px"></div>
@@ -574,30 +576,50 @@ const Views = (() => {
     const _devCam = document.getElementById('addDevicePhotoCam');
     if(_devCam) _devCam.addEventListener('change', handleDevicePhotoInput);
 
-    // Foto cliente — estructura coherente con la foto del equipo
+    // Foto(s) cliente — v56: varias fotos (carné delante/detrás) con el
+    // mismo patrón probado de las fotos del equipo: miniaturas en rejilla,
+    // borrado individual, visor ampliado al tocarlas y contador.
+    const MAX_CLIENT_PHOTOS = 8;
     async function onPickClient(e){
-      const f = e.target.files[0]; if(!f) return;
-      try{ photos.client = await UI.resizeImage(f); renderClient(); }catch(err){ UI.toast('Error con imagen'); }
+      const files = Array.from(e.target.files||[]);
+      for(const f of files){
+        if(photos.client.length >= MAX_CLIENT_PHOTOS){
+          UI.toast(`Máximo ${MAX_CLIENT_PHOTOS} fotos del cliente`); break;
+        }
+        try{ photos.client.push(await UI.resizeImage(f)); }catch(err){ UI.toast('Error con imagen'); }
+      }
       e.target.value = '';
+      renderClient();
     }
     function renderClient(){
       const wrap = document.getElementById('clientPhotoWrap');
       if(!wrap) return;
-      if(photos.client){
+      const cnt = document.getElementById('clientPhotoCount');
+      if(cnt) cnt.textContent = photos.client.length ? `${photos.client.length} foto${photos.client.length>1?'s':''}` : '';
+      if(photos.client.length){
         wrap.innerHTML = `
-          <div class="client-photo-preview has-img">
-            <img src="${photos.client}" id="clientPhotoImg" alt="Foto del cliente">
-            <button type="button" class="photo-remove" id="clientPhotoRm" title="Quitar foto">${ICONS.trash}</button>
+          <div class="multi-photo-grid">
+            ${photos.client.map((p,i)=>`
+              <div class="photo-item">
+                <img src="${p}" data-view-cli="${i}" alt="Foto del cliente ${i+1}">
+                <button type="button" class="photo-remove" data-rm-cli="${i}" title="Quitar foto">${ICONS.trash}</button>
+              </div>`).join('')}
           </div>`;
-        const rm = document.getElementById('clientPhotoRm');
-        if(rm) rm.onclick = e=>{ e.preventDefault(); e.stopPropagation(); photos.client = null; renderClient(); };
-        const img = document.getElementById('clientPhotoImg');
-        if(img) img.onclick = ()=> UI.openImageViewer(photos.client);
+        wrap.querySelectorAll('[data-rm-cli]').forEach(btn=>{
+          btn.onclick = ev=>{
+            ev.preventDefault(); ev.stopPropagation();
+            photos.client.splice(+btn.dataset.rmCli, 1);
+            renderClient();
+          };
+        });
+        wrap.querySelectorAll('[data-view-cli]').forEach(img=>{
+          img.onclick = ()=> UI.openImageViewer(photos.client, +img.dataset.viewCli);
+        });
       } else {
         wrap.innerHTML = `
           <div class="client-photo-preview empty">
             ${ICONS.person}
-            <span class="muted small">Aún no hay foto del cliente</span>
+            <span class="muted small">Aún no hay fotos del cliente</span>
           </div>`;
       }
       // Re-enganchar inputs por si el DOM se reemplazó
@@ -613,10 +635,14 @@ const Views = (() => {
     function renderAudio(){
       const box = document.getElementById('audioBox');
       if(acceptAudio){
+        // v54: reproductor propio — la barra empieza en 0 y se puede
+        // retroceder/adelantar con precisión (el control nativo dibujaba la
+        // barra corrida: "empezaba después de la mitad" en móviles).
         box.innerHTML = `
           <p class="muted small" style="margin:0">Audio de aceptación</p>
-          <audio controls src="${acceptAudio}" style="width:100%"></audio>
+          ${UI.audioPlayerHtml('apForm')}
           <button type="button" class="btn-secondary btn-inline" id="rmAudio">${ICONS.trash} Eliminar</button>`;
+        UI.bindAudioPlayer('apForm', acceptAudio);
         document.getElementById('rmAudio').onclick = ()=>{ acceptAudio = null; renderAudio(); };
       } else {
         box.innerHTML = `
@@ -656,6 +682,25 @@ const Views = (() => {
       }
     }
     renderAudio();
+    // v55 — AUTO-GRABACIÓN: al abrir un registro NUEVO (no al editar) la
+    // grabación del audio de aceptación arranca sola; el técnico ya no
+    // pulsa "Empezar a grabar". Si el micrófono no está disponible
+    // (permiso denegado/navegador sin soporte) seguimos manual sin bloquear.
+    if(!existing && !acceptAudio && document.getElementById('recStart')){
+      setTimeout(async ()=>{
+        const btn = document.getElementById('recStart');
+        if(btn && btn.style.display !== 'none' && !rec){
+          btn.click();
+        }
+      }, 350);
+    }
+    // v55 — Cancelar el grabador activo si se abandona el formulario
+    // (salir sin guardar): libera el micrófono inmediatamente.
+    const prevGuardCleanup = window.__formGuardCleanup;
+    window.__formGuardCleanup = ()=>{
+      try{ if(rec && rec.isRecording()) rec.cancel(); }catch(_){}
+      try{ if(prevGuardCleanup) prevGuardCleanup(); }catch(_){}
+    };
 
     // === PIEZAS (lista de compras, costo fijado por Compra/Venta) ===
     function computePurchasedCatalog(){
@@ -736,12 +781,13 @@ const Views = (() => {
               <select class="pr-name" data-pf="name" data-pi="${i}">${opts}</select>
             </div>
             <div class="pr-nums">
-              <input class="pr-qty" type="number" min="1" step="1" inputmode="numeric" placeholder="Cant." value="${p.qty||1}" data-pf="qty" data-pi="${i}">
+              <input class="pr-qty" type="number" min="1" step="1" inputmode="numeric" placeholder="Cant." value="${p.qty||1}" data-pf="qty" data-pi="${i}" title="Cantidad de esta pieza">
               <input class="pr-cost" type="number" step="0.01" value="${cost.toFixed(2)}" data-pf="unitCost" data-pi="${i}" readonly title="Costo unitario tomado de tus compras">
             </div>
             ${currentName && info ? `<p class="muted xsmall" style="margin:4px 2px 0">Disponible tras esta reparación: <b>${Math.max(0, avail - Number(p.qty||0))}</b> · costo unit. $ ${cost.toFixed(2)}</p>` : (currentName ? '<p class="muted xsmall" style="margin:4px 2px 0;color:#ff9b8b">⚠️ Esta pieza no figura en tus compras. Regístrala en Compra/Venta.</p>' : '')}
+            <button type="button" class="pr-del" data-rm-part="${i}" aria-label="Quitar de esta reparación" title="Quita esta pieza de la reparación. No borra la pieza de Compra/Venta ni del inventario.">${ICONS.trash}<span>Quitar de esta reparación</span></button>
           </div>
-          <button type="button" class="icon-btn-sm pr-rm" data-rm-part="${i}" aria-label="Quitar pieza">${ICONS.trash}</button>
+          <button type="button" class="icon-btn-sm pr-rm" data-rm-part="${i}" aria-label="Quitar de esta reparación" title="Quitar de esta reparación (no borra la pieza de Compra/Venta)">${ICONS.trash}</button>
         </div>`;
       }).join('');
 
@@ -822,13 +868,20 @@ const Views = (() => {
       data.device = fd.get('device');
       data.issue = fd.get('issue');
       data.status = fd.get('status');
+      // v55 — ENTREGA BLINDADA: el formulario de edición no puede poner
+      // Entregada (la entrega solo existe vía Completada + foto de firma).
+      // Si llega así (select cambiado a mano), se conserva Completada.
+      if(data.status === 'delivered' && (existing||{}).status !== 'delivered'
+         && !((existing||{}).signaturePhoto)){
+        data.status = (existing && existing.status==='completed') ? 'completed' : ((existing||{}).status || 'pending');
+      }
       const cleanPhones = naFields.includes('clientPhones') ? [] : phones.map(p=>String(p||'').trim()).filter(Boolean);
       data.clientPhones = cleanPhones;
       data.clientPhone = cleanPhones[0] || null;
       const due = fd.get('dueDate');
-      data.dueDate = due ? new Date(due+'T12:00:00').getTime() : null;
+      data.dueDate = due ? UI.localNoon(due) : null;
       const cAt = fd.get('createdAt');
-      if(cAt){ data.createdAt = new Date(cAt+'T12:00:00').getTime(); }
+      if(cAt){ data.createdAt = UI.localNoon(cAt); }
       const price = fd.get('price'); const dep = fd.get('deposit');
       data.price = naFields.includes('price') ? null : (price ? parseFloat(price) : null);
       data.deposit = naFields.includes('deposit') ? null : (dep ? parseFloat(dep) : null);
@@ -836,7 +889,8 @@ const Views = (() => {
       data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
       data.devicePhotos = photos.device;
       data.devicePhoto = photos.device[0] || null;
-      data.clientPhoto = photos.client;
+      data.clientPhotos = photos.client.slice();
+      data.clientPhoto = photos.client[0] || null;
       data.acceptAudio = acceptAudio;
       data.naFields = naFields.slice();
       data.parts = parts.map(p=>({ name:p.name||'', qty:p.qty||1, unitCost:p.unitCost!=null?p.unitCost:'' }));
@@ -882,7 +936,11 @@ const Views = (() => {
               if(cn && !cn.value.trim()) cn.value = dup.clientName||'';
               const addrEl = document.querySelector('[name=clientAddress]');
               if(addrEl && !addrEl.value.trim() && dup.clientAddress) addrEl.value = dup.clientAddress;
-              if(!photos.client && dup.clientPhoto) photos.client = dup.clientPhoto;
+              if(!photos.client.length && (dup.clientPhotos||[]).length){
+                (dup.clientPhotos||[]).forEach(x=>photos.client.push(x)); renderClient();
+              }else if(!photos.client.length && dup.clientPhoto){
+                photos.client.push(dup.clientPhoto); renderClient();
+              }
               if((!phones.length || phones.every(x=>!x)) && (dup.clientPhones||[]).length){
                 phones.length = 0; (dup.clientPhones||[]).forEach(x=>phones.push(x));
               }
@@ -900,14 +958,21 @@ const Views = (() => {
         data.device = fd.get('device');
         data.issue = fd.get('issue');
         data.status = fd.get('status');
+        // v55 — ENTREGA BLINDADA: el formulario de edición no puede poner
+        // Entregada (la entrega solo existe vía Completada + foto de firma).
+        // Si llega así (select cambiado a mano), se conserva Completada.
+        if(data.status === 'delivered' && (existing||{}).status !== 'delivered'
+           && !((existing||{}).signaturePhoto)){
+          data.status = (existing && existing.status==='completed') ? 'completed' : ((existing||{}).status || 'pending');
+        }
         const cleanPhones = naFields.includes('clientPhones') ? [] : phones.map(p=>String(p||'').trim()).filter(Boolean);
         data.clientPhones = cleanPhones;
         data.clientPhone = cleanPhones[0] || null;
         const due = fd.get('dueDate');
-        data.dueDate = due ? new Date(due+'T12:00:00').getTime() : null;
+        data.dueDate = due ? UI.localNoon(due) : null;
         const cAt = fd.get('createdAt');
         if(cAt){
-          // Conservar hora original si existe, si no usar mediodía
+          // Conservar hora original si existe, si no usar mediodía local
           const orig = r.createdAt ? new Date(r.createdAt) : null;
           const nd = new Date(cAt+'T12:00:00');
           if(orig){ nd.setHours(orig.getHours(), orig.getMinutes(), orig.getSeconds(), 0); }
@@ -920,7 +985,8 @@ const Views = (() => {
         data.warrantyDays = (wd!=null && String(wd).trim()!=='') ? Math.max(0, parseInt(wd,10)||0) : null;
         data.devicePhotos = photos.device;
         data.devicePhoto = photos.device[0] || null;
-        data.clientPhoto = photos.client;
+        data.clientPhotos = photos.client.slice();
+      data.clientPhoto = photos.client[0] || null;
         data.acceptAudio = acceptAudio;
         data.naFields = naFields;
         data.parts = parts
@@ -962,6 +1028,80 @@ const Views = (() => {
   }
 
   // ============= DETALLE =============
+  // v55 — FIRMA DEL CLIENTE al entregar (regla inviolable): se llama cuando la
+  // reparación pasa a COMPLETADA. Captura con cámara/galería → se comprime →
+  // se guarda → la reparación pasa SOLA a 'delivered' (con deliveredAt, el
+  // arranque de la garantía). La única vía de entrega es ESTA: tomar la foto
+  // de la firma. El botón "Cancelar" devuelve el flujo sin entregar.
+  function offerSignatureCapture(id){
+    const rec = DB.findRepair(id); if(!rec) return;
+    UI.openModal(`
+      <h2 style="margin:0 0 6px;font-size:20px">✍️ Firma del cliente</h2>
+      <p class="muted small" style="margin:0 0 12px">
+        La reparación <b>${UI.escape(rec.id)}</b> está lista. Toma la foto del
+        papel con la firma del cliente (o elige una de la galería) y la
+        reparación pasará <b>automáticamente a Entregada</b>.
+      </p>
+      <div id="sigCapture">
+        <div class="sig-shot" id="sigPreview" style="display:none">
+          <img id="sigImg" alt="Firma del cliente">
+          <button type="button" class="sig-remove" id="sigRm" aria-label="Quitar foto">
+            <svg viewBox="0 0 24 24"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+          </button>
+        </div>
+        <div class="btn-row" id="sigBtns">
+          <label class="btn-secondary" style="text-align:center;cursor:pointer">
+            📷 Tomar foto
+            <input type="file" accept="image/*" capture="environment" id="sigCam" hidden>
+          </label>
+          <label class="btn-secondary" style="text-align:center;cursor:pointer">
+            🖼️ Galería
+            <input type="file" accept="image/*" id="sigGal" hidden>
+          </label>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:14px">
+        <button type="button" class="btn-primary" id="sigDone" disabled>✓ Guardar firma y entregar</button>
+      </div>
+      <p class="muted small" style="margin:10px 4px 0">
+        La entrega <b>requiere</b> la foto de la firma. Cierra y vuelve cuando
+        la tengas; la reparación queda en <b>Completada</b>.
+      </p>
+    `);
+    let sig = null;
+    const preview = document.getElementById('sigPreview');
+    const img = document.getElementById('sigImg');
+    const doneBtn = document.getElementById('sigDone');
+    function renderSig(){
+      if(sig){
+        preview.style.display = '';
+        img.src = sig;
+        doneBtn.disabled = false;
+      } else {
+        preview.style.display = 'none';
+        doneBtn.disabled = true;
+      }
+    }
+    async function pick(file){
+      if(!file) return;
+      try{
+        sig = await UI.resizeImage(file, 1200, .8);
+        renderSig();
+      }catch(e){ UI.toast('Error con la imagen'); }
+    }
+    document.getElementById('sigCam').onchange = e=>{ pick(e.target.files[0]); e.target.value=''; };
+    document.getElementById('sigGal').onchange = e=>{ pick(e.target.files[0]); e.target.value=''; };
+    document.getElementById('sigRm').onclick = ()=>{ sig = null; renderSig(); };
+    doneBtn.onclick = ()=>{
+      if(!sig) return;
+      // Guardar la firma + entregar automáticamente (sellando deliveredAt):
+      DB.updateRepair(id, { signaturePhoto: sig, status:'delivered' });
+      UI.closeModal();
+      UI.toast('✓ Firma guardada · reparación entregada');
+      App.refresh();
+    };
+  }
+
   function showRepair(id){
     const r = DB.findRepair(id);
     if(!r) return;
@@ -995,7 +1135,7 @@ const Views = (() => {
       <h2 style="margin:0 0 4px;font-size:20px">${escape(r.clientName||'Cliente')}</h2>
       <p class="muted" style="margin:0 0 14px">${escape(r.id)} · ${escape(r.device||'Equipo')} · <span class="status ${r.status}">${statusLabel(r.status)}</span></p>
 
-      ${r.clientPhoto ? `<div class="client-photo-small"><img src="${r.clientPhoto}" id="detailClientPhoto"></div>` : ''}
+      ${(r.clientPhotos && r.clientPhotos.length) ? `<div class="client-photos-strip" id="detailClientPhotos">${r.clientPhotos.map((p,i)=>`<img src="${p}" data-view-cli="${i}" alt="Foto del cliente ${i+1}" title="Foto del cliente ${i+1}">`).join('')}</div>` : ''}
       ${photos.length ? `<div class="detail-photo-strip">${photos.map((p,i)=>`<img src="${p}" data-view-idx="${i}">`).join('')}</div>` : ''}
 
       <div class="detail-row"><span class="lbl">Teléfono</span><span class="val">${phonesHtml}</span></div>
@@ -1041,9 +1181,18 @@ const Views = (() => {
           </div>`;
       })()}
 
-      ${r.acceptAudio ? `<div class="section-title">Aceptación del cliente</div><audio controls src="${r.acceptAudio}" style="width:100%"></audio>` : ''}
+      ${r.acceptAudio ? `<div class="section-title">Aceptación del cliente</div>${UI.audioPlayerHtml('apDetail')}` : ''}
 
+      ${r.signaturePhoto ? `
+        <div class="section-title">Firma del cliente (entrega)</div>
+        <div class="sig-shot">
+          <img src="${r.signaturePhoto}" id="detailSignature" alt="Firma del cliente al recibir el equipo" style="cursor:zoom-in">
+        </div>` : ''}
 
+      ${(() => {
+        // v54 — Firma del cliente en la entrega (ver quickStatus más abajo)
+        return '';
+      })()}
 
       <div class="section-title">Cambiar estado</div>
       <div class="select-elegant">
@@ -1051,6 +1200,7 @@ const Views = (() => {
           ${['pending','in_progress','completed','delivered','cancelled'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
         </select>
       </div>
+      <div id="sigBox"></div>
       <div class="btn-row three">
         <button class="btn-secondary" id="editBtn">${ICONS.edit} Editar</button>
         <button class="btn-secondary" id="ticketBtn">${ICONS.print} Etiqueta</button>
@@ -1059,11 +1209,23 @@ const Views = (() => {
     `;
     UI.openModal(html);
 
+    // v54 — Reproductor propio en el detalle (barra correcta desde 0)
+    if(r.acceptAudio) UI.bindAudioPlayer('apDetail', r.acceptAudio);
+    // v54 — Ampliar la firma al tocarla
+    const dSig = document.getElementById('detailSignature');
+    if(dSig) dSig.onclick = ()=> UI.openImageViewer(r.signaturePhoto);
+
     document.querySelectorAll('[data-view-idx]').forEach(img=>{
       img.onclick = ()=> UI.openImageViewer(photos, +img.dataset.viewIdx);
     });
-    const cp = document.getElementById('detailClientPhoto');
-    if(cp) cp.onclick = ()=> UI.openImageViewer(r.clientPhoto);
+    // v56 — fotos del cliente (múltiples) en el detalle: tira con visor
+    const cliStrip = document.getElementById('detailClientPhotos');
+    if(cliStrip){
+      const cliPhotos = (r.clientPhotos && r.clientPhotos.length) ? r.clientPhotos : (r.clientPhoto?[r.clientPhoto]:[]);
+      cliStrip.querySelectorAll('[data-view-cli]').forEach(img=>{
+        img.onclick = ()=> UI.openImageViewer(cliPhotos, +img.dataset.viewCli);
+      });
+    }
 
     document.getElementById('quickStatus').addEventListener('change', async e=>{
       const newStatus = e.target.value;
@@ -1074,6 +1236,27 @@ const Views = (() => {
           okText:'Sí, cancelar', cancelText:'Volver', danger:true
         });
         if(!ok){ e.target.value = r.status; return; }
+      }
+      // v55 — ENTREGA BLINDADA (regla de negocio inviolable):
+      // una reparación SOLO llega a Entregada pasando por Completada con
+      // FOTO DE LA FIRMA del cliente; tras tomar la foto pasa sola a
+      // Entregada. Cualquier otra ruta a Entregada se BLOQUEA con mensaje
+      // claro y el select vuelve al estado real.
+      if(newStatus === 'completed' && r.status !== 'completed'){
+        DB.updateRepair(id, { status: 'completed' });
+        UI.toast('Completada. Toma la foto de la firma del cliente para entregarla');
+        offerSignatureCapture(id);
+        return;
+      }
+      if(newStatus === 'delivered' && r.status !== 'delivered'){
+        const rec = DB.findRepair(id);
+        const conFirma = rec && rec.signaturePhoto;
+        const sinCompletar = rec && rec.status !== 'completed';
+        e.target.value = r.status; // revertir: no se entrega por esta vía
+        UI.toast(sinCompletar
+          ? '⛔ Entregada solo vía Completada: primero marca Completada y toma la foto de la firma del cliente'
+          : '⛔ Falta la foto de la firma del cliente: tómala en Completada para entregar');
+        return;
       }
       DB.updateRepair(id, { status: newStatus });
       UI.toast(newStatus==='cancelled' ? 'Reparación cancelada' : 'Estado actualizado');
@@ -1267,6 +1450,9 @@ const Views = (() => {
     const c = s.creator || {phone:'',whatsapp:''};
     const hasLocal = typeof LocalFile !== 'undefined' && LocalFile.hasHandle();
     const localSupported = typeof LocalFile !== 'undefined' && LocalFile.isSupported();
+    // v54: frase secreta recordada (para mostrarla en el cuadro de compartir)
+    let savedPhrase = '';
+    try{ savedPhrase = localStorage.getItem('taller_cfg_phrase') || ''; }catch(_){}
 
     const menuItems = [
       {id:'adm-name',    t:'Nombre',          s:'Marca del sistema',      i:ICONS.edit},
@@ -1389,6 +1575,7 @@ const Views = (() => {
             <span class="gh-status" id="ghStatusText">Listo</span>
           </div>
           <div class="gh-actions">
+            <button class="btn-secondary" id="ghFetchCfg" style="grid-column:1/-1">🔐 Traer configuración del taller (descifra y rellena)</button>
             <button class="btn-secondary" id="ghTest">${ICONS.check||''} Probar conexión</button>
             <button class="btn-secondary" id="ghPull">${ICONS.cloud} Bajar todo</button>
             <button class="btn-primary"   id="ghPush" style="grid-column:1/-1">${ICONS.save||''} Subir / sincronizar todo</button>
@@ -1425,15 +1612,17 @@ const Views = (() => {
         <h3>Copia local (manual)</h3>
         <p>Exporta o importa el JSON manualmente. Contiene fotos + audios embebidos.</p>
         <div class="btn-row">
+          <button class="btn-primary" id="exportLocBtn">Elegir ubicación y exportar todo…</button>
           <button class="btn-secondary" id="exportBtn">Exportar JSON</button>
           <button class="btn-secondary" id="importBtn">Importar JSON</button>
         </div>
         <input type="file" id="importFile" accept="application/json" style="display:none">
+        <p class="muted small" id="exportLocHint" style="margin-top:8px">«Elegir ubicación…» abre el selector de tu equipo para guardar la copia donde TÚ decidas (PC). «Exportar JSON» la deja en la carpeta Descargas (móvil y PC).</p>
       </div>
 
       <div class="admin-card share-card" id="adm-share">
         <h3>📱 Datos hacia otros dispositivos (móvil)</h3>
-        <p>Comparte la <b>configuración de conexión</b> (usuario, repositorio, rama y carpeta — <b>nunca el token</b>) dentro de la nube del taller. Otro dispositivo que abra la app se conectará <b>sin teclear nada</b>: se le preguntará una única vez y descargará los datos automáticamente en modo lectura hasta que añada su propio token.</p>
+        <p>Comparte la <b>configuración de conexión</b> (usuario, repositorio, rama y carpeta) en la nube del taller. Otro dispositivo que abra la app se conectará <b>sin teclear nada</b>: se le preguntará una única vez y descargará los datos automáticamente.</p>
         <div class="row-between" style="gap:12px;align-items:flex-start">
           <div style="flex:1">
             <label class="inline-check" style="margin-bottom:6px">
@@ -1444,6 +1633,14 @@ const Views = (() => {
               <div class="form-group" style="margin:0"><label>WhatsApp de contacto (opcional)</label>
                 <input id="shareWhatsapp" inputmode="tel" placeholder="+58 412 0000000" value="${escape((s.githubShared&&s.githubShared.whatsapp)||'')}"></div>
             </div>
+            <div class="form-group" style="margin-top:10px"><label>🔐 Frase secreta del taller (cifrado de la configuración)</label>
+              <div class="pwd-wrap"><input id="sharePhrase" type="password" placeholder="Ej: mi taller 48228" value="${escape(savedPhrase||'')}"><button type="button" class="pwd-eye" data-pwd-toggle aria-label="Mostrar frase"><svg viewBox="0 0 24 24" class="ico eye-on"><path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 1 0-6z"/></svg><svg viewBox="0 0 24 24" class="ico eye-off"><path d="M2 4.3L3.3 3l18 18-1.3 1.3-3-3A12 12 0 0 1 12 20C5 20 1 13 1 13a17 17 0 0 1 4.4-5.1L2 4.3zM12 8a5 5 0 0 1 5 5c0 .7-.1 1.3-.4 1.9l-2-2A3 3 0 0 0 12 10c-.3 0-.6 0-.9.1l-2-2C9.7 8 10.8 8 12 8zm0-3c7 0 11 7 11 7a17 17 0 0 1-3.2 4l-1.4-1.4A14 14 0 0 0 21 13s-3.5-6-9-6c-.8 0-1.5.1-2.2.3L8.3 5.9C9.5 5.3 10.7 5 12 5z"/></svg></button></div>
+              <p class="muted small" style="margin:6px 0 0">Con la frase, la configuración viaja <b>cifrada</b> (AES-GCM) por Pages y los móviles del taller se rellenan solos. Sin frase, viaja sin cifrar (formato antiguo).</p>
+            </div>
+            <label class="inline-check" style="margin-top:10px">
+              <input type="checkbox" id="shareTokenChk" ${(s.githubShared && s.githubShared.shareToken) ? 'checked' : ''}>
+              Incluir también el <b>token</b> en el cifrado (los móviles del taller podrán editar)
+            </label>
             ${ (s.githubShared && s.githubShared.user) ? `
             <p class="muted small" style="margin-top:8px">
               Compartiendo: <b>${escape(s.githubShared.user)}/${escape(s.githubShared.repo)}</b> · carpeta <code>${escape(s.githubShared.path)}</code>${s.githubSharedAt?` · desde ${fmtDateTime(s.githubSharedAt)}`:''}
@@ -1490,7 +1687,7 @@ const Views = (() => {
       <div class="admin-card" id="adm-warranty">
         <h3>Garantía por defecto</h3>
         <p>Días que se rellenarán automáticamente al crear una reparación nueva.</p>
-        <input id="defWarranty" type="number" min="0" step="1" inputmode="numeric" class="input-pill" value="${s.defaultWarrantyDays!=null?s.defaultWarrantyDays:30}">
+        <input id="defWarranty" type="number" min="0" step="1" inputmode="numeric" class="input-pill" value="${s.defaultWarrantyDays!=null?s.defaultWarrantyDays:7}">
       </div>
 
       <div class="admin-card" id="adm-stats">
@@ -1840,41 +2037,110 @@ const Views = (() => {
       };
     }
 
-    function askImportMode(text){
+    // v56 — IMPORTAR SEGURO: antes de tocar nada se pre-lee el JSON y se
+    // muestra un resumen del archivo frente al contenido actual. "Añadir"
+    // fusiona sin duplicar (opción destacada, no pierde nada); "Reemplazar
+    // todo" exige DOS confirmaciones con el conteo exacto de lo que se
+    // PERDERÁ, porque borra todos los datos actuales del dispositivo.
+    async function askImportMode(text){
+      let file = null;
+      try{
+        file = typeof text==='string' ? JSON.parse(text) : text;
+      }catch(_){ UI.toast('Archivo inválido (JSON ilegible)'); return; }
+      if(!file || (!Array.isArray(file.repairs) && !Array.isArray(file.transactions))){
+        UI.toast('Archivo inválido: no contiene reparaciones ni movimientos');
+        return;
+      }
+      const fileReps  = Array.isArray(file.repairs) ? file.repairs.length : 0;
+      const fileTxs   = Array.isArray(file.transactions) ? file.transactions.length : 0;
+      const curReps   = DB.repairs.length;
+      const curTxs    = (DB.transactions||[]).length;
+      const newReps   = file.repairs ? file.repairs.filter(r=>r && r.id && !DB.repairs.some(x=>x.id===r.id)).length : 0;
+      const newTxs    = file.transactions ? file.transactions.filter(t=>t && t.id && !(DB.transactions||[]).some(x=>x.id===t.id)).length : 0;
+      const dupReps   = fileReps - newReps;
+      const dupTxs    = fileTxs - newTxs;
+
       const wrap = document.createElement('div');
       wrap.className = 'confirm-overlay';
       wrap.innerHTML = `
         <div class="confirm-card" role="dialog" aria-modal="true">
           <h3>Importar JSON</h3>
-          <p>¿Cómo deseas cargar este archivo?<br><b>Reemplazar</b> borra los datos actuales y deja solo los del archivo. <b>Añadir</b> conserva tus datos y suma los nuevos (sin duplicar por id).</p>
+          <p style="margin-bottom:8px">El archivo trae <b>${fileReps} reparación(es)</b> y <b>${fileTxs} movimiento(s)</b>.<br>
+          Ahora mismo tienes <b>${curReps} reparación(es)</b> y <b>${curTxs} movimiento(s)</b> en este dispositivo.</p>
+          <p class="muted small" style="margin:0 0 12px">Elige cómo cargarlo:</p>
           <div class="btn-row" style="flex-wrap:wrap;gap:8px">
-            <button class="btn-secondary" data-act="cancel">Cancelar</button>
-            <button class="btn-secondary" data-act="merge">Añadir al existente</button>
-            <button class="btn-primary btn-cancel" data-act="replace">Reemplazar todo</button>
+            <button class="btn-secondary" data-act="cancel">Cancelar (no tocar nada)</button>
+            <button class="btn-primary" data-act="merge">Añadir al existente ${ (newReps||newTxs) ? `(+${newReps} rep · +${newTxs} mov)` : '(todo ya existe)' }</button>
+            <button class="btn-primary btn-cancel" data-act="replace">Reemplazar TODO</button>
           </div>
         </div>`;
       document.body.appendChild(wrap);
       const close = ()=> wrap.remove();
-      wrap.addEventListener('click', ev2=>{
+      wrap.addEventListener('click', async ev2=>{
         if(ev2.target===wrap){ close(); return; }
         const act = ev2.target.closest('[data-act]')?.dataset.act;
         if(!act) return;
         if(act==='cancel'){ close(); return; }
         if(act==='replace'){
+          // DOBLE CONFIRMACIÓN — primera: qué se pierde exactamente.
+          const first = await UI.confirmDialog({
+            title:'¿Reemplazar todos los datos?',
+            message:`Se BORRARÁN los ${curReps} reparación(es) y ${curTxs} movimiento(s) actuales, con TODAS sus fotos, audios y firmas. En su lugar quedarán solo los ${fileReps} reparación(es) y ${fileTxs} movimiento(s) del archivo.`,
+            okText:'Sí, reemplazar', cancelText:'Cancelar', danger:true
+          });
+          if(!first){ close(); return; }
+          // Segunda: verificación final con acción explícita.
+          const second = await UI.confirmDialog({
+            title:'Última confirmación',
+            message:'¿Estás SEGURO? No se puede deshacer: se pierden los datos actuales. Si dudas, cancela y usa "Añadir al existente" (no pierde nada), o exporta antes una copia con "Exportar JSON".',
+            okText:'Reemplazar definitivamente', cancelText:'Mejor no', danger:true
+          });
+          if(!second){ close(); return; }
           if(DB.importJson(text)){ UI.toast('Datos reemplazados'); App.refresh(); }
           else UI.toast('Archivo inválido');
         } else if(act==='merge'){
           const res = DB.mergeJson(text);
           if(res && res.ok){
-            UI.toast(`Añadido: +${res.added.repairs} rep · +${res.added.transactions} mov`);
+            const msg = [`${res.added.repairs} rep y ${res.added.transactions} mov añadidos`];
+            if(dupReps > 0 || dupTxs > 0) msg.push(`${dupReps} rep y ${dupTxs} mov ya existían (no duplicados)`);
+            UI.toast('✓ ' + msg.join(' · '));
             App.refresh();
           } else UI.toast('Archivo inválido');
         }
         close();
       });
     }
+    // Expuesta para pruebas E2E y para que LocalFile.loadFromFile pueda
+    // redirigir aquí en lugar de reemplazar datos sin preguntar.
+    window.__askImportMode = askImportMode;
 
     document.getElementById('exportBtn').onclick = ()=>{ DB.exportJson(); UI.toast('Descargado'); };
+    // v56e — EXPORTAR TODO ELIGIENDO UBICACIÓN: resumen previo de lo que
+    // contiene la copia (para saber qué se protege) y selector del sistema
+    // para guardar donde el técnico decida. En móvil (sin File System Access)
+    // se explica y se cae a la descarga clásica.
+    const exportLoc = document.getElementById('exportLocBtn');
+    if(exportLoc) exportLoc.onclick = async ()=>{
+      const s = DB.exportSummary();
+      const kb = (s.bytes/1024).toFixed(1);
+      const msg = `La copia incluirá: ${s.repairs} reparación(es) · ${s.transactions} compra/venta · ${s.fotos} foto(s) · ${s.audios} audio(s) · ajustes y contraseña (${kb} KB).` +
+        ( ('showSaveFilePicker' in window)
+          ? ' Elige la carpeta y el nombre en el diálogo que se abrirá.'
+          : ' Tu navegador guardará la copia en Descargas: muévela luego a donde quieras (memoria, nube, PC).' );
+      const ok = await UI.confirmDialog({ title:'Exportar copia de seguridad', message:msg, okText:'Continuar', cancelText:'Cancelar' });
+      if(!ok) return;
+      if('showSaveFilePicker' in window){
+        try{
+          const r = await DB.exportWithPicker();
+          UI.toast('Copia guardada: ' + r.name);
+        }catch(e){
+          if(e.name!=='AbortError') UI.toast('Error: '+e.message);
+        }
+      } else {
+        DB.exportJson();
+        UI.toast('Copia descargada (carpeta Descargas)');
+      }
+    };
     document.getElementById('importBtn').onclick = ()=> document.getElementById('importFile').click();
     document.getElementById('importFile').onchange = e=>{
       const f = e.target.files[0]; if(!f) return;
@@ -1885,16 +2151,37 @@ const Views = (() => {
       e.target.value = '';
     };
 
-    // ===== v5: Compartir configuración con otros dispositivos =====
+    // ===== v5/v54: Compartir configuración con otros dispositivos =====
     const shareBtn = document.getElementById('shareConfigBtn');
     if(shareBtn) shareBtn.onclick = ()=>{
       const chk = document.getElementById('shareConfigChk').checked;
       const wa = document.getElementById('shareWhatsapp').value.trim();
+      const phEl = document.getElementById('sharePhrase');
+      const phrase = phEl ? phEl.value.trim() : '';
+      const shareToken = document.getElementById('shareTokenChk')
+        ? document.getElementById('shareTokenChk').checked : false;
       if(chk){
         const g = DB.settings.github;
         if(!g.user || !g.repo){ UI.toast('Completa primero la Sincronización GitHub (usuario y repositorio)'); return; }
-        DB.setGithubShared({ user:g.user, repo:g.repo, branch:g.branch||'main', path:g.path||'taller-data', whatsapp:wa });
-        UI.toast('✓ Configuración compartida: el próximo dispositivo se conectará solo');
+        if(shareToken && !g.token){
+          UI.toast('Para incluir el token, guarda primero el token en la Sincronización GitHub');
+          return;
+        }
+        DB.setGithubShared({
+          user:g.user, repo:g.repo, branch:g.branch||'main',
+          path:g.path||'taller-data', whatsapp:wa,
+          // v54: frase secreta y consentimiento de token viajan en el
+          // bloque compartido; el TOKEN en sí solo se empaqueta al
+          // construir el payload cifrado (nunca en claro).
+          phrase: phrase || '', shareToken: !!shareToken
+        });
+        if(phrase){
+          // Recordar la frase también como clave local de descifrado
+          try{ localStorage.setItem('taller_cfg_phrase', phrase); }catch(_){}
+          UI.toast('✓ Configuración compartida y CIFRADA: el próximo móvil solo escribe la frase');
+        } else {
+          UI.toast('✓ Configuración compartida (sin cifrar): añade una frase secreta para cifrarla');
+        }
         // Publicar config.json de inmediato si hay conexión y token
         if(GitSync.cfgOk() && g.autoSync){ GitSync.schedulePush(); }
         admin();
@@ -1906,6 +2193,103 @@ const Views = (() => {
         } else {
           UI.toast('Sin cambios');
         }
+      }
+    };
+
+    // ===== v54: Descifrar config.json del servidor y RELLENAR los cuadros =====
+    // Flujo manual: "trae la configuración del taller y ponla en los
+    // cuadros de usuario/repo/rama/carpeta/token" — evita re-teclearlo
+    // todo cuando el dispositivo ya tiene la app instalada.
+    const fetchCfgBtn = document.getElementById('ghFetchCfg');
+    if(fetchCfgBtn) fetchCfgBtn.onclick = async ()=>{
+      fetchCfgBtn.disabled = true;
+      const old = fetchCfgBtn.textContent;
+      fetchCfgBtn.textContent = 'Descifrando…';
+      try{
+        // Lee el config publicado por Pages (ruta relativa al despliegue)
+        const paths = ['taller-data/config.json', './taller-data/config.json'];
+        let txt = null;
+        for(const p of paths){
+          try{
+            const resp = await fetch(p, { cache:'no-store' });
+            if(resp.ok){ txt = await resp.text(); break; }
+          }catch(_){}
+        }
+        if(txt == null){ UI.toast('No hay config.json publicado en la nube'); return; }
+        let cfg = null;
+        if(CryptoCfg.isEncrypted(txt)){
+          // Pedir la frase (o usar la recordada) y descifrar
+          let phrase = '';
+          try{ phrase = localStorage.getItem('taller_cfg_phrase') || ''; }catch(_){}
+          for(let attempt=0; attempt<2 && !cfg; attempt++){
+            if(!phrase){
+              phrase = await new Promise(resolve=>{
+                const wrap = document.createElement('div');
+                wrap.className = 'confirm-overlay';
+                wrap.innerHTML = `
+                  <div class="confirm-card" role="dialog" aria-modal="true">
+                    <h3>🔐 Frase secreta del taller</h3>
+                    <p style="line-height:1.55">La configuración de la nube viaja <b>cifrada</b>.
+                    Escribe la frase para descifrarla y autorrellenar los cuadros.</p>
+                    <div class="form-group" style="margin:0 0 12px">
+                      <input type="password" id="edrPhrase2" placeholder="Frase secreta" autocomplete="off" style="width:100%;box-sizing:border-box">
+                    </div>
+                    <div class="btn-row">
+                      <button class="btn-secondary" data-act="no">Cancelar</button>
+                      <button class="btn-primary" data-act="yes">Descifrar</button>
+                    </div>
+                  </div>`;
+                document.body.appendChild(wrap);
+                const inp = wrap.querySelector('#edrPhrase2');
+                if(inp) setTimeout(()=>{ try{ inp.focus(); }catch(_){} }, 50);
+                const close = v => { wrap.remove(); resolve(v); };
+                wrap.addEventListener('click', e=>{
+                  if(e.target===wrap){ close(null); return; }
+                  const act = e.target.closest('[data-act]')?.dataset.act;
+                  if(act==='yes') close(inp ? inp.value.trim() : '');
+                  if(act==='no') close(null);
+                });
+                wrap.addEventListener('keydown', e=>{
+                  if(e.key==='Enter'){ e.preventDefault(); close(inp ? inp.value.trim() : ''); }
+                });
+              });
+              if(phrase == null){ return; } // cancelado
+            }
+            try{
+              cfg = JSON.parse(await CryptoCfg.decrypt(txt, phrase));
+              try{ localStorage.setItem('taller_cfg_phrase', phrase); }catch(_){}
+            }catch(e){ phrase = ''; if(attempt===0) UI.toast('Frase secreta incorrecta'); }
+          }
+        } else {
+          try{ cfg = JSON.parse(txt); }catch(_){}
+        }
+        if(!cfg || cfg.kind !== 'taller-config'){
+          UI.toast('El config.json de la nube no es válido');
+          return;
+        }
+        // RELLENAR los cuadros de texto, legibles, tal cual llegaron:
+        const put = (id, v)=>{ const el = document.getElementById(id); if(el && v!=null) el.value = v; };
+        put('ghUser', cfg.user || '');
+        put('ghRepo', cfg.repo || '');
+        put('ghBranch', cfg.branch || 'main');
+        put('ghPath', cfg.path || 'taller-data');
+        if(cfg.token) put('ghToken', cfg.token);
+        // Guardar en DB los valores adoptados (guardado normal):
+        DB.updateGithub({
+          enabled:true,
+          user:cfg.user||'', repo:cfg.repo||'',
+          branch:cfg.branch||'main', path:cfg.path||'taller-data',
+          token:cfg.token||'', autoSync:true
+        });
+        UI.toast(cfg.token
+          ? '✓ Configuración descifrada y cuadros rellenados (token incluido)'
+          : '✓ Configuración descifrada y cuadros rellenados');
+        admin();
+      }catch(e){
+        UI.toast('No se pudo descifrar la configuración');
+      }finally{
+        fetchCfgBtn.disabled = false;
+        fetchCfgBtn.textContent = old;
       }
     };
 
@@ -2393,11 +2777,11 @@ const Views = (() => {
       </div>
 
 
-      <div class="acc-card cv-stats-card">
+      <div class="acc-card cv-stats-card open">
         <button class="acc-head" data-acc type="button">
           <span class="acc-ico">${ICONS.box}</span>
           <span class="acc-title">Contabilidad e ingresos</span>
-          <span class="acc-sub">Lo que entró, lo que costó y la ganancia neta · toca para abrir o cerrar</span>
+          <span class="acc-sub">Lo que entró, lo que costó y la ganancia neta (incluye el Total histórico) · toca para cerrar</span>
           <span class="acc-chev"></span>
         </button>
         <div class="acc-body">${cvStatsTilesHtml()}</div>
@@ -2767,7 +3151,10 @@ const Views = (() => {
         unitCost: unitCost,
         costTotal: hasCost ? Number((unitCost*q).toFixed(2)) : null,
         total: Number(tot.toFixed(2)),
-        date: dateStr ? new Date(dateStr).getTime() : Date.now(),
+        // v56d — FECHA LOCAL: 'YYYY-MM-DD' sin hora se interpreta como UTC
+        // 00:00 y en husos negativos (América) fmtDate la mostraba un día
+        // antes. Se fija al mediodía LOCAL del día elegido por el técnico.
+        date: dateStr ? UI.localNoon(dateStr) : Date.now(),
         counterparty: (fd.get('counterparty')||'').trim() || null,
         notes: (fd.get('notes')||'').trim() || null
       };

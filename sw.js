@@ -14,8 +14,8 @@
 // - v53: precarga los .min (producción); index.html ya los
 //   referencia con ?v=53.
 // =============================================================
-const CACHE = 'taller-v53';
-const VERSION = '53';
+const CACHE = 'taller-v56e';
+const VERSION = '56e';
 const ASSETS = [
   './','./index.html','./manifest.json',
   './css/styles.min.css',

@@ -3,12 +3,15 @@
 // la barra y lo retiramos con fade cuando la interfaz YA está renderizada.
 const Splash = (() => {
   const el = document.getElementById('edrSplash');
-  const fill = document.getElementById('spFill');
+  const ring = document.getElementById('spRing');
+  const pctEl = document.getElementById('spPct');
   const msg = document.getElementById('spMsg');
   let pct = 0;
   function progress(p, m){
     pct = Math.max(pct, Math.min(100, Math.round(p)));
-    if(fill) fill.style.width = pct + '%';
+    // v54 — anillo circular conic-gradient: el CSS lee --sp
+    if(ring) ring.style.setProperty('--sp', pct);
+    if(pctEl) pctEl.textContent = pct + '%';
     if(m && msg) msg.textContent = m;
   }
   function done(){
@@ -183,8 +186,61 @@ const App = (() => {
       try{ if(window.Install && Install.renderInstallCard) Install.renderInstallCard(); }catch(_){}
     }
     window.scrollTo(0,0);
+    // v54 — la vista nueva puede ser más alta/ baja: re-evaluar el botón
+    try{ const jb = document.getElementById('edrJump'); if(jb) jb.dispatchEvent(new Event('__check')); }catch(_){}
+    setTimeout(()=>{ try{ const jb = document.getElementById('edrJump'); if(jb) jb.dispatchEvent(new Event('__check')); }catch(_){} }, 120);
   }
   function refresh(){ go(current, currentArg); }
+
+  // v54 — Navegación rápida arriba/abajo. Un solo botón flotante:
+  // ↓ "ir al final" mientras estás arriba; ↑ "volver arriba" cuando ya
+  // estás abajo (o a media página con scroll > 1 pantalla). Suave
+  // (smooth), respeta prefers-reduced-motion y NO ocupa alto de layout.
+  function initJumpNav(){
+    if(document.getElementById('edrJump')) return;
+    const btn = document.createElement('button');
+    btn.id = 'edrJump';
+    btn.className = 'top-jump';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Ir al final de la página');
+    btn.innerHTML = `
+      <svg viewBox="0 0 24 24" class="j-down" fill="currentColor"><path d="M12 16l-6-6 1.4-1.4L12 13.2l4.6-4.6L18 10z"/></svg>
+      <svg viewBox="0 0 24 24" class="j-up" fill="currentColor" style="display:none"><path d="M12 8l6 6-1.4 1.4L12 10.8l-4.6 4.6L6 14z"/></svg>`;
+    document.body.appendChild(btn);
+    const down = btn.querySelector('.j-down');
+    const up   = btn.querySelector('.j-up');
+    let atEnd = false;
+    function setMode(isEnd){
+      atEnd = isEnd;
+      down.style.display = isEnd ? 'none' : '';
+      up.style.display   = isEnd ? '' : 'none';
+      btn.setAttribute('aria-label', isEnd ? 'Volver arriba' : 'Ir al final de la página');
+    }
+    function onScroll(){
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      const vh = window.innerHeight || 1;
+      // Mostrar solo cuando la página es más larga que la pantalla
+      const docH = Math.max(
+        document.body.scrollHeight, document.documentElement.scrollHeight
+      );
+      const longEnough = docH > vh * 1.6;
+      btn.classList.toggle('show', longEnough);
+      const nearEnd = y + vh >= docH - 80;
+      setMode(nearEnd);
+    }
+    window.addEventListener('scroll', onScroll, { passive:true });
+    // v54 — re-chequeo cuando el App.go renderiza una vista nueva
+    btn.addEventListener('__check', onScroll);
+    setTimeout(onScroll, 60);
+    btn.addEventListener('click', ()=>{
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const docH = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      const y = window.scrollY || 0;
+      const target = atEnd ? 0 : docH;
+      window.scrollTo({ top: target, behavior: reduce ? 'auto' : 'smooth' });
+    });
+    onScroll();
+  }
 
   function init(){
     Splash.progress(25, 'Leyendo almacenamiento…');
@@ -195,7 +251,15 @@ const App = (() => {
     });
     const fb = document.getElementById('forgotBtn');
     if(fb) fb.addEventListener('click', openForgotFlow);
-    document.getElementById('logoutBtn').addEventListener('click', ()=>{
+    document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+      // v54 — Salir SIEMPRE con confirmación (antes cerraba de golpe y era
+      // fácil tocarlo sin querer perdiendo la vista activa).
+      const ok = await UI.confirmDialog({
+        title:'Salir del sistema',
+        message:'¿Cerrar Taller? Tus datos quedan guardados en el dispositivo y en la nube.',
+        okText:'Sí, salir', cancelText:'Cancelar'
+      });
+      if(!ok) return;
       Auth.logout();
       // v53 — sin contraseña configurada (requirePassword=false) NO hay nada
       // que desbloquear: salir y volver a entrar directo (como pide el
@@ -216,6 +280,10 @@ const App = (() => {
     });
     const sb = document.getElementById('headerSearchBtn');
     if(sb) sb.addEventListener('click', ()=> go('search'));
+    // v54 — NAVEGACIÓN RÁPIDA: botón flotante "ir al final" que se convierte
+    // en "volver arriba" al llegar abajo. No cambia el alto de la topbar ni
+    // del contenido (flota a la derecha, sobre la app, encima del tabbar).
+    try{ initJumpNav(); }catch(_){}
     // Inicializar el módulo de instalación PWA (shortcuts del manifest,
     // detección de beforeinstallprompt y guía iOS). v53: install.js es defer;
     // si aún no cargó, su auto-boot escucha __appReady.
