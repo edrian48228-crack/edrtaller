@@ -1,8 +1,25 @@
-# Taller — PWA de reparaciones (v6.2.6)
+# Taller — PWA de reparaciones (v6.2.7)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## v6.2.7 — Estados atascados y contador del Inicio
+
+- **Corregido el error de estados**: reparaciones que estaban en
+  Completada (equipos entregados de verdad pero sin foto de firma) ya no
+  se atascan. Una migración automática (una sola vez) pasa a Entregadas
+  las Completadas con entrega vencida o registradas hace más de 3 días,
+  sellando su fecha de entrega — y el **Resumen vuelve a mostrar la
+  ganancia completa**, porque solo suma las Entregadas. Las Completadas
+  recientes se quedan: el técnico aún puede tomarles la firma.
+- **Marcar Entregada ya no está bloqueado**: desde el detalle se puede
+  pasar de Completada a Entregada siempre; si falta la foto de firma, se
+  pide confirmación y se recuerda que puede añadirse después. Los
+  formularios de alta y edición también aceptan Entregada sin degradarla.
+- **Contador del Inicio mejorado**: texto «Reparaciones registradas en el
+  sistema» con el número grande (30 px) en dorado resaltado y un resumen
+  de estados debajo (pendientes · en proceso · entregadas).
 
 ## v6.2.6 — Inicio: saludo y contador de reparaciones
 

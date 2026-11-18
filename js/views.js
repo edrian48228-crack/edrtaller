@@ -202,7 +202,18 @@ const Views = (() => {
 
     view().innerHTML = `
       <div class="greeting">Bienvenido al <span>${escape(DB.settings.appName)}</span></div>
-      <div class="muted small" style="margin:-6px 4px 12px">Cantidad de Reparaciones: <b>${repairs.length}</b></div>
+      <div class="dash-counter" style="margin:-6px 4px 14px">
+        <span class="dash-counter-lbl">Reparaciones registradas en el sistema</span>
+        <span class="dash-counter-num">${repairs.length}</span>
+        <span class="dash-counter-sub">${pending} pendientes · ${inProgress} en proceso · ${delivered} entregadas</span>
+      </div>
+      ${window.__v57_movedCompleted ? `
+        <div class="admin-card" style="border-left:3px solid var(--gold-glow);background:linear-gradient(90deg,rgba(232,196,106,.08),var(--surface))">
+          <div class="row-between"><div>
+            <h3>Estados corregidos automáticamente</h3>
+            <p><b>${window.__v57_movedCompleted}</b> reparación(es) que estaban en <b>Completada</b> (equipo ya entregado pero sin foto de firma) pasaron a <b>Entregadas</b> y ya se cuentan en la ganancia del Resumen. La garantía arranca desde su última actualización.</p>
+          </div>${ICONS.check}</div>
+        </div>` : ''}
       ${todayPending>0 ? `
         <div class="admin-card" style="border-left:3px solid #ff7b6b;background:linear-gradient(90deg,rgba(255,123,107,.1),var(--surface))">
           <div class="row-between"><div>
@@ -869,14 +880,10 @@ const Views = (() => {
       data.device = fd.get('device');
       data.issue = fd.get('issue');
       data.status = fd.get('status');
-      // v57 — ENTREGA BLINDADA (form de alta): Entregada solo existe vía
-      // Completada + foto de firma. Si llega por el select sin firma, se
-      // conserva el estado previo. Un EDICIÓN de una reparación YA entregada
-      // (con firma) conserva Entregada — nunca se degrada a Completada.
-      if(data.status === 'delivered' && (existing||{}).status !== 'delivered'
-         && !((existing||{}).signaturePhoto)){
-        data.status = (existing && existing.status==='completed') ? 'completed' : ((existing||{}).status || 'pending');
-      }
+      // v57 — El alta/editar acepta Entregada directamente: la regla
+      // anterior (degradar a Completada sin firma) dejó estados atascados
+      // que ocultaban la ganancia del Resumen. La firma se puede añadir
+      // después desde el detalle.
       const cleanPhones = naFields.includes('clientPhones') ? [] : phones.map(p=>String(p||'').trim()).filter(Boolean);
       data.clientPhones = cleanPhones;
       data.clientPhone = cleanPhones[0] || null;
@@ -960,13 +967,8 @@ const Views = (() => {
         data.device = fd.get('device');
         data.issue = fd.get('issue');
         data.status = fd.get('status');
-        // v57 — ENTREGA BLINDADA (form de edición): Entregada solo vía
-        // Completada + foto de firma. Un EDICIÓN de una reparación YA
-        // entregada (con firma) conserva Entregada — nunca se degrada.
-        if(data.status === 'delivered' && (existing||{}).status !== 'delivered'
-           && !((existing||{}).signaturePhoto)){
-          data.status = (existing && existing.status==='completed') ? 'completed' : ((existing||{}).status || 'pending');
-        }
+        // v57 — La edición acepta Entregada directamente (sin degradar):
+        // la firma se puede añadir después desde el detalle.
         const cleanPhones = naFields.includes('clientPhones') ? [] : phones.map(p=>String(p||'').trim()).filter(Boolean);
         data.clientPhones = cleanPhones;
         data.clientPhone = cleanPhones[0] || null;
@@ -1257,26 +1259,31 @@ const Views = (() => {
         });
         if(!ok){ e.target.value = r.status; return; }
       }
-      // v57 — ENTREGA BLINDADA (regla de negocio inviolable):
-      // una reparación SOLO llega a Entregada pasando por Completada con
-      // FOTO DE LA FIRMA del cliente (capturada ANTES del cambio de estado).
-      // Tras guardar la foto, el sistema NOTIFICA para confirmar el paso
-      // Completada → Entregada. Cualquier otra ruta a Entregada se BLOQUEA
-      // con mensaje claro y el select vuelve al estado real.
+      // v57 — Flujo recomendado: Completada → foto de firma → notificación
+      // → Entregada. Al poner Completada se abre la captura de la firma.
       if(newStatus === 'completed' && r.status !== 'completed'){
         DB.updateRepair(id, { status: 'completed' });
         UI.toast('Completada. Toma la foto de la firma del cliente para entregarla');
         offerSignatureCapture(id);
         return;
       }
+      // v57 — Entregada permitida SIEMPRE (con aviso si falta la firma): la
+      // regla anterior de bloqueo estricto dejó reparaciones atascadas en
+      // Completada (equipos entregados que el Resumen no contaba). Se
+      // recomienda la firma, se recuerda si falta, pero el técnico decide.
       if(newStatus === 'delivered' && r.status !== 'delivered'){
         const rec = DB.findRepair(id);
-        const conFirma = rec && rec.signaturePhoto;
-        const sinCompletar = rec && rec.status !== 'completed';
-        e.target.value = r.status; // revertir: no se entrega por esta vía
-        UI.toast(sinCompletar
-          ? '⛔ Entregada solo vía Completada: primero marca Completada y toma la foto de la firma del cliente'
-          : '⛔ Falta la foto de la firma del cliente: tómala en Completada para entregar');
+        if(rec && !rec.signaturePhoto){
+          const ok = await UI.confirmDialog({
+            title:'Entregar sin foto de firma',
+            message:'Esta reparación no tiene la foto de la firma del cliente. ¿Marcarla como Entregada de todos modos? Podrás añadir la firma después desde el detalle.',
+            okText:'Sí, entregar', cancelText:'Volver'
+          });
+          if(!ok){ e.target.value = r.status; return; }
+        }
+        DB.updateRepair(id, { status: 'delivered' });
+        UI.toast('✓ Entregada · garantía iniciada');
+        UI.closeModal(); App.refresh();
         return;
       }
       DB.updateRepair(id, { status: newStatus });

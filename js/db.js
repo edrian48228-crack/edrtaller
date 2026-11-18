@@ -18,7 +18,7 @@ const DB = (() => {
   const KEY = 'taller_db_v1';
   const IDB_NAME = 'taller-db';
   const IDB_STORE = 'kv';
-  const SCHEMA_VERSION = 9;
+  const SCHEMA_VERSION = 10;
   const DEFAULT_DEVICES = [
     'Televisor','Smart TV','Monitor','Laptop','PC de escritorio','Tablet',
     'Teléfono móvil','Impresora','Microondas','Lavadora','Refrigerador',
@@ -530,6 +530,35 @@ const DB = (() => {
     if(!data.settings.githubShared || typeof data.settings.githubShared!=='object'){
       data.settings.githubShared = null; changed = true;
     }
+    // v57 — CORRECCIÓN DE ESTADOS ATASCADOS (schema 10, una sola vez):
+    // reglas anteriores dejaban reparaciones en Completada para siempre si
+    // el técnico nunca tomó la foto de firma; el equipo estaba entregado de
+    // verdad pero el Resumen no las contaba (solo suma Entregadas). Esta
+    // migración pasa a Entregada toda reparación Completada cuya fecha de
+    // entrega prometida venció (o registrada hace >3 días), sellando su
+    // deliveredAt para la garantía. Las Completadas recientes (≤3 días y sin
+    // vencer) se quedan: el técnico aún puede tomarles la firma. Nada se
+    // borra — solo cambia el campo de estado.
+    if((data.schemaVersion||0) < 10){
+      const now = Date.now();
+      let moved = 0;
+      for(const r of data.repairs){
+        if(r.status !== 'completed') continue;
+        const dueTs = r.dueDate || 0;
+        const createdTs = r.createdAt || 0;
+        const overdue = dueTs > 0 && dueTs < now;
+        const old3 = createdTs > 0 && (now - createdTs) > 3*86400000;
+        if(overdue || old3){
+          r.status = 'delivered';
+          r.deliveredAt = r.updatedAt || r.createdAt || now;
+          moved++;
+        }
+      }
+      if(moved){
+        changed = true;
+        window.__v57_movedCompleted = moved; // aviso para la UI
+      }
+    }
     data.schemaVersion = SCHEMA_VERSION;
     if(changed) save(false);
   }
@@ -688,13 +717,10 @@ const DB = (() => {
       save();
     },
     addRepair(r){
-      // v55 — ENTREGA BLINDADA (capa de datos): nadie registra una
-      // reparación ya Entregada (sin foto de firma la entrega no existe).
-      // Se guarda como Completada: el flujo de entrega con firma se hace
-      // después desde el detalle.
-      if(r.status === 'delivered' && !r.signaturePhoto){
-        r.status = 'completed';
-      }
+      // v57 — El alta ya acepta Entregada directamente (con deliveredAt):
+      // reparaciones registradas tardíamente cuando el equipo se entregó
+      // antes de cargar el trabajo en el sistema. La foto de firma se
+      // puede añadir después desde el detalle.
       const localSuffix = (()=>{
         try{
           let v = localStorage.getItem('taller_device_id');
@@ -722,15 +748,11 @@ const DB = (() => {
       const r = data.repairs.find(x=>x.id===id);
       if(!r) return null;
       const prevStatus = r.status;
-      // v55 — ENTREGA BLINDADA (capa de datos): Entregada SOLO con foto de
-      // firma (la foto llega SIEMPRE en el mismo patch del flujo oficial:
-      // completada → foto → entregada). Un patch que intente Entregada sin
-      // firma se rechaza y se conserva el estado previo.
-      if(patch && patch.status === 'delivered' && !patch.signaturePhoto
-         && !r.signaturePhoto && prevStatus !== 'delivered'){
-        patch = { ...patch };
-        delete patch.status;
-      }
+      // v57 — La capa de datos YA NO bloquea Entregada sin foto: el estado
+      // se puede cambiar siempre (la regla anterior dejó estados atascados
+      // cuando la foto de firma no se tomó y ocultó ganancias del Resumen).
+      // El flujo recomendado sigue siendo Completada → foto → Entregada, y
+      // la UI lo sigue guiando; pero el técnico decide.
       Object.assign(r, patch, { updatedAt: Date.now() });
       // v56 — mantener el alias clientPhoto sincronizado con clientPhotos[0]
       // (el array es la fuente de verdad tras la migración multi-foto).
