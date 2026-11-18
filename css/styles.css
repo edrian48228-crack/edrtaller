@@ -816,7 +816,11 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 }
 .acc-card.open .acc-head .acc-chev{transform:rotate(-135deg);border-color:var(--gold-glow)}
 .acc-body{max-height:0;overflow:hidden;padding:0 16px;transition:max-height .25s ease, padding .2s}
-.acc-card.open .acc-body{max-height:2000px;padding:4px 16px 16px}
+/* v57 — Total histórico tapado: 2000px se quedaba corto en móvil (5 tiles +
+   leyenda lo exceden y el marco cortaba el contenido a la mitad). Se sube el
+   tope a un valor que NUNCA corta contenido real (conserva la animación de
+   apertura) y overflow pasa a visible al abrir por seguridad extra. */
+.acc-card.open .acc-body{max-height:600000px;padding:4px 16px 16px}
 
 /* === v11: ganancia/inversión en transacciones === */
 .tx-profit{margin-left:8px;font-weight:700;font-size:12px}

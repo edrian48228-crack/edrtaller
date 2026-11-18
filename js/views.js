@@ -201,7 +201,8 @@ const Views = (() => {
     const recent = applySort(repairs, sortKey).slice(0,5);
 
     view().innerHTML = `
-      <div class="greeting">Bienvenido a <span>${escape(DB.settings.appName)}</span></div>
+      <div class="greeting">Bienvenido al <span>${escape(DB.settings.appName)}</span></div>
+      <div class="muted small" style="margin:-6px 4px 12px">Cantidad de Reparaciones: <b>${repairs.length}</b></div>
       ${todayPending>0 ? `
         <div class="admin-card" style="border-left:3px solid #ff7b6b;background:linear-gradient(90deg,rgba(255,123,107,.1),var(--surface))">
           <div class="row-between"><div>
@@ -868,9 +869,10 @@ const Views = (() => {
       data.device = fd.get('device');
       data.issue = fd.get('issue');
       data.status = fd.get('status');
-      // v55 — ENTREGA BLINDADA: el formulario de edición no puede poner
-      // Entregada (la entrega solo existe vía Completada + foto de firma).
-      // Si llega así (select cambiado a mano), se conserva Completada.
+      // v57 — ENTREGA BLINDADA (form de alta): Entregada solo existe vía
+      // Completada + foto de firma. Si llega por el select sin firma, se
+      // conserva el estado previo. Un EDICIÓN de una reparación YA entregada
+      // (con firma) conserva Entregada — nunca se degrada a Completada.
       if(data.status === 'delivered' && (existing||{}).status !== 'delivered'
          && !((existing||{}).signaturePhoto)){
         data.status = (existing && existing.status==='completed') ? 'completed' : ((existing||{}).status || 'pending');
@@ -958,9 +960,9 @@ const Views = (() => {
         data.device = fd.get('device');
         data.issue = fd.get('issue');
         data.status = fd.get('status');
-        // v55 — ENTREGA BLINDADA: el formulario de edición no puede poner
-        // Entregada (la entrega solo existe vía Completada + foto de firma).
-        // Si llega así (select cambiado a mano), se conserva Completada.
+        // v57 — ENTREGA BLINDADA (form de edición): Entregada solo vía
+        // Completada + foto de firma. Un EDICIÓN de una reparación YA
+        // entregada (con firma) conserva Entregada — nunca se degrada.
         if(data.status === 'delivered' && (existing||{}).status !== 'delivered'
            && !((existing||{}).signaturePhoto)){
           data.status = (existing && existing.status==='completed') ? 'completed' : ((existing||{}).status || 'pending');
@@ -1028,19 +1030,21 @@ const Views = (() => {
   }
 
   // ============= DETALLE =============
-  // v55 — FIRMA DEL CLIENTE al entregar (regla inviolable): se llama cuando la
-  // reparación pasa a COMPLETADA. Captura con cámara/galería → se comprime →
-  // se guarda → la reparación pasa SOLA a 'delivered' (con deliveredAt, el
-  // arranque de la garantía). La única vía de entrega es ESTA: tomar la foto
-  // de la firma. El botón "Cancelar" devuelve el flujo sin entregar.
+  // v57 — FIRMA DEL CLIENTE al entregar (regla inviolable): se llama cuando la
+  // reparación pasa a COMPLETADA. La sección de captura se pinta ABAJO, en el
+  // propio detalle, ANTES de cambiar el estado a Entregada. Tras guardar la
+  // foto el sistema muestra una NOTIFICACIÓN pidiendo confirmar el paso
+  // Completada → Entregada (el técnico decide; la entrega no ocurre en
+  // silencio). El botón "Cancelar" devuelve el flujo sin entregar.
   function offerSignatureCapture(id){
     const rec = DB.findRepair(id); if(!rec) return;
     UI.openModal(`
       <h2 style="margin:0 0 6px;font-size:20px">✍️ Firma del cliente</h2>
       <p class="muted small" style="margin:0 0 12px">
-        La reparación <b>${UI.escape(rec.id)}</b> está lista. Toma la foto del
-        papel con la firma del cliente (o elige una de la galería) y la
-        reparación pasará <b>automáticamente a Entregada</b>.
+        La reparación <b>${UI.escape(rec.id)}</b> quedó en <b>Completada</b>.
+        Toma la foto del papel con la firma del cliente (o elige una de la
+        galería) y, al guardarla, te pediremos confirmar el paso a
+        <b>Entregada</b>.
       </p>
       <div id="sigCapture">
         <div class="sig-shot" id="sigPreview" style="display:none">
@@ -1061,7 +1065,7 @@ const Views = (() => {
         </div>
       </div>
       <div class="btn-row" style="margin-top:14px">
-        <button type="button" class="btn-primary" id="sigDone" disabled>✓ Guardar firma y entregar</button>
+        <button type="button" class="btn-primary" id="sigDone" disabled>✓ Guardar firma</button>
       </div>
       <p class="muted small" style="margin:10px 4px 0">
         La entrega <b>requiere</b> la foto de la firma. Cierra y vuelve cuando
@@ -1092,12 +1096,23 @@ const Views = (() => {
     document.getElementById('sigCam').onchange = e=>{ pick(e.target.files[0]); e.target.value=''; };
     document.getElementById('sigGal').onchange = e=>{ pick(e.target.files[0]); e.target.value=''; };
     document.getElementById('sigRm').onclick = ()=>{ sig = null; renderSig(); };
-    doneBtn.onclick = ()=>{
+    doneBtn.onclick = async ()=>{
       if(!sig) return;
-      // Guardar la firma + entregar automáticamente (sellando deliveredAt):
-      DB.updateRepair(id, { signaturePhoto: sig, status:'delivered' });
+      // v57 — Guardar la foto SIN entregar en silencio: queda Completada y se
+      // pide confirmación explícita del paso a Entregada (notificación clara).
+      DB.updateRepair(id, { signaturePhoto: sig });
       UI.closeModal();
-      UI.toast('✓ Firma guardada · reparación entregada');
+      const ok = await UI.confirmDialog({
+        title:'Cambiar estado a Entregada',
+        message:`La firma quedó guardada en la reparación ${DB.findRepair(id).id}. ¿Cambiar el estado de Completada a Entregada ahora? Esto inicia la garantía.`,
+        okText:'Sí, marcar Entregada', cancelText:'Todavía no'
+      });
+      if(ok){
+        DB.updateRepair(id, { status:'delivered' });
+        UI.toast('✓ Entregada · garantía iniciada');
+      } else {
+        UI.toast('Firma guardada · sigue Completada');
+      }
       App.refresh();
     };
   }
@@ -1187,7 +1202,12 @@ const Views = (() => {
         <div class="section-title">Firma del cliente (entrega)</div>
         <div class="sig-shot">
           <img src="${r.signaturePhoto}" id="detailSignature" alt="Firma del cliente al recibir el equipo" style="cursor:zoom-in">
-        </div>` : ''}
+        </div>` : (r.status==='completed' ? `
+        <div class="section-title">Firma del cliente (pendiente de entrega)</div>
+        <p class="muted small" style="margin:-4px 0 8px">Guarda la foto de la firma <b>antes</b> de cambiar el estado a Entregada.</p>
+        <div class="btn-row">
+          <button type="button" class="btn-primary" id="sigPendingBtn">✍️ Tomar / elegir foto de la firma</button>
+        </div>` : '')}
 
       ${(() => {
         // v54 — Firma del cliente en la entrega (ver quickStatus más abajo)
@@ -1237,11 +1257,12 @@ const Views = (() => {
         });
         if(!ok){ e.target.value = r.status; return; }
       }
-      // v55 — ENTREGA BLINDADA (regla de negocio inviolable):
+      // v57 — ENTREGA BLINDADA (regla de negocio inviolable):
       // una reparación SOLO llega a Entregada pasando por Completada con
-      // FOTO DE LA FIRMA del cliente; tras tomar la foto pasa sola a
-      // Entregada. Cualquier otra ruta a Entregada se BLOQUEA con mensaje
-      // claro y el select vuelve al estado real.
+      // FOTO DE LA FIRMA del cliente (capturada ANTES del cambio de estado).
+      // Tras guardar la foto, el sistema NOTIFICA para confirmar el paso
+      // Completada → Entregada. Cualquier otra ruta a Entregada se BLOQUEA
+      // con mensaje claro y el select vuelve al estado real.
       if(newStatus === 'completed' && r.status !== 'completed'){
         DB.updateRepair(id, { status: 'completed' });
         UI.toast('Completada. Toma la foto de la firma del cliente para entregarla');
@@ -1262,6 +1283,10 @@ const Views = (() => {
       UI.toast(newStatus==='cancelled' ? 'Reparación cancelada' : 'Estado actualizado');
       UI.closeModal(); App.refresh();
     });
+    // v57 — botón de firma abajo (estado Completada sin firma): abre la
+    // captura ANTES de cambiar el estado; tras guardar notifica el paso a Entregada.
+    const sigPending = document.getElementById('sigPendingBtn');
+    if(sigPending) sigPending.onclick = ()=> offerSignatureCapture(id);
     document.getElementById('editBtn').onclick = ()=>{ UI.closeModal(); App.go('new', null, r); };
     document.getElementById('ticketBtn').onclick = ()=>{ showLabel(r); };
     document.getElementById('delBtn').onclick = async ()=>{
@@ -1446,9 +1471,12 @@ const Views = (() => {
   // ============= ADMIN =============
   function admin(){
     const s = DB.settings;
-    const g = s.github;
+    const g = s.github || {};
     const c = s.creator || {phone:'',whatsapp:''};
-    const hasLocal = typeof LocalFile !== 'undefined' && LocalFile.hasHandle();
+    // v57 — el handle local carga async de IndexedDB: al pintar admin puede
+    // seguir vacío (bug «Cargar desde el archivo» deshabilitado). El binding
+    // de la tarjeta (paintLocalCardState) lo re-chequea y habilita al llegar.
+    let hasLocal = typeof LocalFile !== 'undefined' && LocalFile.hasHandle();
     const localSupported = typeof LocalFile !== 'undefined' && LocalFile.isSupported();
     // v54: frase secreta recordada (para mostrarla en el cuadro de compartir)
     let savedPhrase = '';
@@ -1604,7 +1632,7 @@ const Views = (() => {
             <button class="btn-secondary" id="clearLoc" ${hasLocal?'':'disabled'}>Quitar ubicación</button>
           </div>
           <button class="btn-secondary" id="loadFromLoc" ${hasLocal?'':'disabled'} style="margin-top:8px">Cargar desde el archivo</button>
-          <p class="muted small" style="margin-top:8px">Estado: ${hasLocal?'<b>Ubicación configurada</b>':'sin configurar'}</p>
+          <p class="muted small" style="margin-top:8px" id="localCardState">Estado: ${hasLocal?'<b>Ubicación configurada</b>':'sin configurar'}</p>
         ` : `<p class="muted small">Tu navegador no soporta elegir ubicación. Usa "Exportar JSON" en su lugar.</p>`}
       </div>` : ''}
 
@@ -2019,18 +2047,34 @@ const Views = (() => {
     };
 
     if(typeof LocalFile !== 'undefined' && localSupported){
+      // v57 — repinta la tarjeta del archivo local cuando el handle async
+      // termina de cargar (corrige «Cargar desde el archivo» deshabilitado).
+      function paintLocalCardState(){
+        const st = document.getElementById('localCardState');
+        const lfBtn = document.getElementById('loadFromLoc');
+        const clr = document.getElementById('clearLoc');
+        const ok = LocalFile.hasHandle();
+        if(st) st.innerHTML = 'Estado: ' + (ok?'<b>Ubicación configurada</b>':'sin configurar');
+        if(lfBtn) lfBtn.disabled = !ok;
+        if(clr) clr.disabled = !ok;
+      }
+      if(!hasLocal){
+        try{
+          LocalFile.loadHandle().then(()=>{ hasLocal = true; paintLocalCardState(); });
+        }catch(_){}
+      }
       const pl = document.getElementById('pickLoc');
       if(pl) pl.onclick = async ()=>{
-        try{ await LocalFile.pickLocation(); UI.toast('Ubicación guardada'); App.refresh(); }
+        try{ await LocalFile.pickLocation(); UI.toast('Ubicación guardada'); paintLocalCardState(); }
         catch(e){ if(e.name!=='AbortError') UI.toast('Error: '+e.message); }
       };
       const clr = document.getElementById('clearLoc');
-      if(clr) clr.onclick = async ()=>{ await LocalFile.clearHandle(); UI.toast('Ubicación quitada'); App.refresh(); };
+      if(clr) clr.onclick = async ()=>{ await LocalFile.clearHandle(); UI.toast('Ubicación quitada'); paintLocalCardState(); };
       const lf = document.getElementById('loadFromLoc');
       if(lf) lf.onclick = async ()=>{
         try{
           const text = await LocalFile.readText();
-          if(text==null){ UI.toast('No se pudo leer'); return; }
+          if(text==null){ UI.toast('No se pudo leer el archivo (¿se movió o borró?). Vuelve a elegir la ubicación.'); return; }
           askImportMode(text);
         }
         catch(e){ UI.toast('Error: '+e.message); }
@@ -2766,14 +2810,23 @@ const Views = (() => {
     const _stats = computeAllStats();
     const _gT = _stats.total.totalProfit;
     const _gCls = _gT>=0 ? 'pos' : 'neg';
+    // v57 — DESGLOSE del hero: qué parte está ya cobrada (entregadas+ventas)
+    // y qué parte está POR COBRAR (reparaciones no entregadas). El número
+    // grande es ganancia REAL cobrada; el resto va aparte, sin mezclar.
+    const _pend = _stats.total.pendingRepair || 0;
     view().innerHTML = `
       <div class="greeting">Resumen <span>financiero</span></div>
       <p class="muted small" style="margin:-8px 4px 14px">Ganancias, ingresos y reparaciones — todo con explicación de dónde sale cada cifra.</p>
 
       <div class="profit-hero ${_gCls}">
-        <span class="ph-label">Ganancia total acumulada</span>
+        <span class="ph-label">Ganancia total acumulada (ya cobrada)</span>
         <span class="ph-amount">$ ${_gT.toFixed(2)}</span>
-        <span class="ph-help">Ventas + servicios − costos · de todo el historial</span>
+        <span class="ph-help">Ventas + servicios entregados − costos · de todo el historial</span>
+        ${_pend>0 ? `
+        <span class="ph-help" style="margin-top:6px;padding-top:6px;border-top:1px dashed var(--border)">
+          Además tienes <b>$ ${_pend.toFixed(2)}</b> <b>por cobrar</b> en reparaciones
+          terminadas o en curso que aún no se entregaron (se suman al momento de la entrega).
+        </span>` : ''}
       </div>
 
 

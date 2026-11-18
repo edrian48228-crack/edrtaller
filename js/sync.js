@@ -291,12 +291,20 @@ const GitSync = (() => {
   async function getRepo(){
     const c = g();
     const r = await api(`/repos/${c.user}/${c.repo}`);
-    if(!r.ok) throw new Error('Repo '+r.status);
+    if(!r.ok) throw new Error(
+      r.status === 404 ? `El repositorio «${c.user}/${c.repo}» no existe (o el token no tiene acceso a él). Revisa usuario y repositorio`
+      : r.status === 401 ? 'Token inválido o caducado (401)'
+      : 'No se pudo leer el repositorio ('+r.status+')'
+    );
     return r.json();
   }
   async function getUser(){
     const r = await api(`/user`);
-    if(!r.ok) throw new Error('Usuario '+r.status);
+    if(!r.ok) throw new Error(
+      r.status === 401 ? 'Token inválido o caducado (401): genera uno nuevo en GitHub → Settings → Developer settings → Fine-grained tokens, con permiso Contents: read/write en tu repositorio'
+      : r.status === 403 ? 'Acceso denegado (403): el token no tiene permiso sobre este repositorio'
+      : 'No se pudo autenticar ('+r.status+')'
+    );
     return r.json();
   }
 
@@ -491,12 +499,26 @@ const GitSync = (() => {
 
   // ---------- Operaciones de alto nivel ----------
   async function testConnection(){
-    if(!cfgOk()) throw new Error('Completa usuario, repositorio y token');
+    // v57 — diagnóstico claro: decir QUÉ falta en vez de un error genérico.
+    const c = g();
+    if(!c.user)   throw new Error('Falta el usuario / organización (campo Usuario / org)');
+    if(!c.repo)   throw new Error('Falta el repositorio (campo Repositorio)');
+    if(!c.token)  throw new Error('Falta el token (campo Token · github_pat_…)');
+    if(!c.enabled) throw new Error('La sincronización está apagada: enciéndela con el interruptor de arriba');
     GitLog.info('test', 'Probando conexión…');
     const u = await getUser();
     GitLog.ok('user', `Autenticado como ${u.login}`);
     const r = await getRepo();
     GitLog.ok('repo', `Repo accesible: ${r.full_name} · rama por defecto: ${r.default_branch}`);
+    // v57 — verificar también la RAMA configurada (antes solo se comprobaba
+    // la default: un typo en la rama daba errores confusos al sincronizar).
+    const branch = c.branch || 'main';
+    if(branch && branch !== r.default_branch){
+      const br = await api(`/repos/${c.user}/${c.repo}/branches/${encodeURIComponent(branch)}`);
+      if(br.status === 404) throw new Error(`La rama «${branch}» no existe en el repo (la default es «${r.default_branch}»)`);
+      if(!br.ok) throw new Error('Rama '+br.status);
+      GitLog.ok('branch', `Rama «${branch}» accesible`);
+    }
     GitLog.info('ruta', `Base de datos: ${basePath()}/  (index.json + repairs/Rxxxx.json)`);
     return true;
   }
@@ -1493,8 +1515,15 @@ const LocalFile = (() => {
   }
   async function ensurePermission(h){
     const opts = { mode:'readwrite' };
-    if((await h.queryPermission(opts)) === 'granted') return true;
-    return (await h.requestPermission(opts)) === 'granted';
+    try{
+      if((await h.queryPermission(opts)) === 'granted') return true;
+      return (await h.requestPermission(opts)) === 'granted';
+    }catch(_){
+      // v57 — handle corrupto/serializado sin métodos (prueba o migración
+      // antigua): se trata como SIN permiso y el flujo muestra el mensaje
+      // claro de re-elegir ubicación.
+      return false;
+    }
   }
   async function write(){
     if(!cachedHandle) return false;
@@ -1513,8 +1542,15 @@ const LocalFile = (() => {
   async function readText(){
     if(!cachedHandle) return null;
     if(!(await ensurePermission(cachedHandle))) return null;
-    const f = await cachedHandle.getFile();
-    return await f.text();
+    try{
+      const f = await cachedHandle.getFile();
+      return await f.text();
+    }catch(e){
+      // v57 — archivo movido/borrado o permiso caído: mensaje claro y
+      // recuperable (re-elegir la ubicación) en vez de un error críptico.
+      console.warn('LocalFile readText', e);
+      return null;
+    }
   }
   async function loadFromFile(){
     // v56 — esta API ya no reemplaza datos sin preguntar: si hay datos
@@ -1527,6 +1563,12 @@ const LocalFile = (() => {
     return text; // el llamador debe pasarlo por askImportMode
   }
   loadHandle();
+  // v57 — «Cargar desde el archivo» no funcionaba: loadHandle() es async y
+  // se llamaba sin esperar → al pintar Administración hasHandle() seguía
+  // false (handle aún no cargado de IndexedDB) y el botón salía deshabilitado
+  // con «sin configurar» aunque hubiera ubicación guardada. Se avisa cuando
+  // el handle ya está disponible para que la UI se repinte con el estado real.
+  loadHandle().then(()=>{ try{ window.dispatchEvent(new Event('localfile-ready')); }catch(_){} });
   return { isSupported, hasHandle, pickLocation, clearHandle, write, scheduleWrite, loadFromFile, readText, loadHandle };
 
 })();

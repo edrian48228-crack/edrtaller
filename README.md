@@ -1,8 +1,51 @@
-# Taller — PWA de reparaciones (v6.2.4)
+# Taller — PWA de reparaciones (v6.2.6)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## v6.2.6 — Inicio: saludo y contador de reparaciones
+
+- Corregido el saludo del Inicio: ahora dice «Bienvenido al …» (antes
+  «Bienvenido a Taller», gramaticalmente incorrecto).
+- Añadido debajo del saludo el contador «Cantidad de Reparaciones», que
+  muestra el total registrado y se actualiza solo en cada recarga de la
+  vista (no hay que reentrar ni refrescar a mano).
+
+## v6.2.5 — Seis correcciones críticas
+
+- **Firma del cliente (entrega)**: la sección de firma ahora aparece ABAJO,
+  en el detalle, ANTES de cambiar el estado. Al marcar Completada se abre
+  la captura de la foto; al guardarla, el sistema NOTIFICA y pide
+  confirmación para el paso Completada → Entregada (con arranque de
+  garantía). Antes entregaba en silencio al guardar la foto. Editar una
+  reparación YA entregada (con firma) ya no la degrada a Completada.
+- **Resumen**: la cifra grande ahora se titula «ganancia total acumulada
+  (ya cobrada)» y, si hay reparaciones no entregadas, se muestra aparte la
+  línea «por cobrar» — antes las cifras se mezclaban y resultaban
+  confusas. La ganancia sigue siendo (ventas + servicios entregados) −
+  costos; lo pendiente no se suma hasta entregar.
+- **Cargar desde el archivo (Admin)**: el botón salía deshabilitado con
+  «sin configurar» aunque hubiera ubicación elegida — el handle del
+  archivo carga asíncrono desde IndexedDB y la pantalla se pintaba antes.
+  Ahora se habilita solo al cargarlo, y si el archivo se movió o borró,
+  el aviso dice cómo recuperarlo (re-elegir la ubicación).
+- **GitHub**: los campos usuario/repositorio/rama/token se muestran
+  siempre al abrir Administración; «Probar conexión» dice QUÉ falta
+  («Falta el usuario…», «Falta el token…»), explica el 401 (token
+  caducado) y el 404 (repo inexistente) con la solución, y comprueba la
+  RAMA configurada además de la default.
+- **Total histórico tapado**: el acordeón de estadísticas cortaba su
+  contenido a la mitad en móviles (tope de altura 2000px). Eliminado el
+  corte: el contenido se ve completo siempre.
+- **Salir del sistema**: tras confirmar, la sesión se cierra DE VERDAD:
+  se cierra la pestaña cuando el navegador lo permite y, si no, aparece
+  una pantalla final «Sesión cerrada» con reingreso manual — antes volvía
+  al login de la misma página y con la contraseña desactivada reentraba
+  solo, sin sensación de salida. Los datos nunca se tocan.
+- Verificado con 69 pruebas de regresión + recorrido completo de vistas:
+  ninguna actualización borra datos (reparaciones, movimientos, fotos,
+  audios y ajustes intactos tras el flujo completo).
 
 ## v6.2.4 — Copia de seguridad en la ubicación que elijas
 

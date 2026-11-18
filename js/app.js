@@ -261,11 +261,31 @@ const App = (() => {
       });
       if(!ok) return;
       Auth.logout();
-      // v53 — sin contraseña configurada (requirePassword=false) NO hay nada
-      // que desbloquear: salir y volver a entrar directo (como pide el
-      // diseño "no pedir contraseña"), en vez de enseñar un login inútil.
-      if(!DB.settings.requirePassword){ window.location.reload(); return; }
-      showLogin();
+      // v57 — CIERRE REAL: salir no vuelve a enseñar el login en la misma
+      // página (antes parecía "no salir"). Se intenta cerrar la pestaña
+      // (cuando el navegador lo permite); si no se puede, se muestra una
+      // pantalla final de sesión cerrada con reingreso manual voluntario.
+      // Los datos NUNCA se tocan: IndexedDB/localStorage quedan intactos.
+      try{ window.close(); }catch(_){}
+      // Algunos navegadores ignoran window.close() (no la abrió un script).
+      // Pantalla de cierre definitiva:
+      document.getElementById('app').classList.add('hidden');
+      const ls = document.getElementById('loginScreen');
+      ls.classList.add('hidden');
+      const bye = document.createElement('div');
+      bye.id = 'closedScreen';
+      bye.style.cssText = 'min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center';
+      bye.innerHTML = `
+        <div style="font-size:44px">🔒</div>
+        <h2 style="margin:0">Sesión cerrada</h2>
+        <p style="margin:0;max-width:420px;color:var(--muted)">
+          Saliste del sistema. Tus datos quedan guardados en este dispositivo y en la nube.<br>
+          Vuelve a entrar abriendo la app de nuevo.
+        </p>
+        <button class="btn-primary" id="reenterBtn" style="margin-top:8px">Volver a entrar</button>`;
+      document.body.appendChild(bye);
+      const re = bye.querySelector('#reenterBtn');
+      if(re) re.onclick = ()=>{ bye.remove(); location.reload(); };
     });
     document.getElementById('modalClose').addEventListener('click', UI.closeModal);
     document.getElementById('modal').addEventListener('click', e=>{
