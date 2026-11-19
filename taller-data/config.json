@@ -1,10 +1,11 @@
 {
   "kind": "taller-config",
-  "schema": 1,
+  "schema": 2,
   "user": "edrian48228-crack",
   "repo": "edrtaller",
   "branch": "main",
   "path": "taller-data",
   "whatsapp": "",
-  "createdAt": 1794844916438
+  "token": "",
+  "createdAt": 1795108799716
 }
