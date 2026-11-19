@@ -90,7 +90,14 @@
       "lastSyncAt": null,
       "lastSha": null
     },
-    "githubShared": null
+    "githubShared": {
+      "user": "edrian48228-crack",
+      "repo": "edrtaller",
+      "branch": "main",
+      "path": "taller-data",
+      "whatsapp": ""
+    },
+    "githubSharedAt": 1795108799716
   },
   "transactions": [
     {
