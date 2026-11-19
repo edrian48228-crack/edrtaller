@@ -1,0 +1,38 @@
+{
+  "kind": "repair",
+  "schema": 1,
+  "repair": {
+    "clientName": "Ana Flora Hernandez",
+    "clientAddress": "Los maceo y el 10 norte # 156",
+    "clientIdNumber": null,
+    "device": "Teléfono móvil",
+    "brand": "Samsung",
+    "model": "09",
+    "serial": null,
+    "issue": "Puerto de carga . Cambio ",
+    "status": "delivered",
+    "notes": null,
+    "clientPhones": [],
+    "clientPhone": null,
+    "dueDate": 1794934800000,
+    "createdAt": 1794933820644,
+    "price": 2500,
+    "deposit": null,
+    "warrantyDays": 7,
+    "devicePhotos": [],
+    "devicePhoto": null,
+    "clientPhoto": null,
+    "acceptAudio": null,
+    "naFields": [
+      "clientPhones",
+      "clientIdNumber",
+      "serial",
+      "deposit"
+    ],
+    "parts": [],
+    "id": "R0008-K1B8",
+    "updatedAt": 1795015266245,
+    "deliveredAt": 1795015266245,
+    "clientPhotos": []
+  }
+}
