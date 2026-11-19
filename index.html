@@ -15,30 +15,39 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Taller" />
-  <link rel="stylesheet" href="css/styles.min.css?v=59" />
-  <!-- ===== SPLASH v54 (inline: se pinta ANTES de descargar cualquier JS) =====
-       Anillo de progreso circular (conic-gradient) + logo con halo pulsante,
-       brillo de barrido y fundido de salida. Rápido de pintar: solo CSS. -->
+  <link rel="stylesheet" href="css/styles.min.css?v=63" />
+  <!-- ===== SPLASH v57 (inline: se pinta ANTES de descargar cualquier JS) =====
+       Anillo de progreso circular con trazo REAL que sigue al avance, logo
+       con respiración sutil, brillo de barrido, nombre con subrayado animado
+       y fundido de salida. Solo CSS (rápido de pintar). v61: rediseño más
+       vivo y compacto — el anillo ahora COMPLETA su giro con el progreso
+       real y late mientras carga. -->
   <style>
-    #edrSplash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:radial-gradient(120% 120% at 50% 0%,#151515 0%,#0d0d0d 55%,#0a0a0a 100%);color:#e8e8e8;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;transition:opacity .4s ease}
-    #edrSplash.done{opacity:0;pointer-events:none}
-    #edrSplash .sp-wrap{position:relative;width:104px;height:104px;display:flex;align-items:center;justify-content:center}
+    #edrSplash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:radial-gradient(120% 120% at 50% 0%,#151515 0%,#0d0d0d 55%,#0a0a0a 100%);color:#e8e8e8;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;transition:opacity .38s ease,transform .38s ease}
+    #edrSplash.done{opacity:0;transform:scale(1.02);pointer-events:none}
+    #edrSplash .sp-wrap{position:relative;width:96px;height:96px;display:flex;align-items:center;justify-content:center}
     #edrSplash .sp-ring{position:absolute;inset:0;border-radius:50%;
-      background:conic-gradient(#e05555 calc(var(--sp,0)*1%),rgba(255,255,255,.09) 0);
-      -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));
-      mask:radial-gradient(farthest-side,transparent calc(100% - 7px),#000 calc(100% - 6px));
-      animation:sp-spin 14s linear infinite;transition:background .3s ease}
-    @keyframes sp-spin{to{transform:rotate(1turn)}}
-    #edrSplash .sp-logo{width:84px;height:84px;border-radius:22px;position:relative;overflow:hidden;background:linear-gradient(145deg,#1f1f1f,#141414);border:1px solid rgba(255,255,255,.08);box-shadow:0 12px 40px rgba(0,0,0,.55),0 0 0 0 rgba(224,85,85,.35),inset 0 1px 0 rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;color:#e05555}
-    #edrSplash .sp-logo::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.14) 50%,transparent 60%);transform:translateX(-120%);animation:sp-shine 2.6s ease-in-out infinite}
-    @keyframes sp-shine{60%,100%{transform:translateX(120%)}}
-    #edrSplash .sp-logo svg{width:50px;height:50px;animation:sp-pulse 2.2s ease-in-out infinite;filter:drop-shadow(0 2px 8px rgba(224,85,85,.45))}
-    @keyframes sp-pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(.93);opacity:.8}}
-    #edrSplash .sp-name{font-size:26px;font-weight:800;letter-spacing:.5px;background:linear-gradient(90deg,#fff 40%,#e05555 90%);-webkit-background-clip:text;background-clip:text;color:transparent}
-    #edrSplash .sp-msg{font-size:12.5px;color:#9a9a9a;min-height:16px;letter-spacing:.2px}
-    #edrSplash .sp-pct{font-size:11px;color:#7c7c7c;font-variant-numeric:tabular-nums;letter-spacing:.8px}
-    #edrSplash .sp-ver{position:absolute;bottom:22px;font-size:10.5px;color:#5a5a5a;letter-spacing:1.5px}
-    @media (prefers-reduced-motion:reduce){#edrSplash .sp-ring,#edrSplash .sp-logo::after,#edrSplash .sp-logo svg{animation:none}}
+      background:conic-gradient(#e05555 calc(var(--sp,0)*1%),rgba(255,255,255,.08) 0);
+      -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));
+      mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));
+      transition:background .25s ease;animation:sp-beat 1.6s ease-in-out infinite}
+    @keyframes sp-beat{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}
+    #edrSplash .sp-ring::after{content:'';position:absolute;inset:-10px;border-radius:50%;
+      box-shadow:0 0 34px rgba(224,85,85,.28);opacity:0;animation:sp-halo 1.6s ease-in-out infinite}
+    @keyframes sp-halo{50%{opacity:1}}
+    #edrSplash .sp-logo{width:78px;height:78px;border-radius:20px;position:relative;overflow:hidden;background:linear-gradient(145deg,#1f1f1f,#141414);border:1px solid rgba(255,255,255,.09);box-shadow:0 12px 40px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;color:#e05555}
+    #edrSplash .sp-logo::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.16) 50%,transparent 60%);transform:translateX(-120%);animation:sp-shine 2s ease-in-out infinite}
+    @keyframes sp-shine{55%,100%{transform:translateX(120%)}}
+    #edrSplash .sp-logo svg{width:46px;height:46px;animation:sp-pulse 1.6s ease-in-out infinite;filter:drop-shadow(0 2px 10px rgba(224,85,85,.5))}
+    @keyframes sp-pulse{0%,100%{transform:scale(1)}50%{transform:scale(.94)}}
+    #edrSplash .sp-name{font-size:27px;font-weight:800;letter-spacing:.5px;background:linear-gradient(90deg,#fff 40%,#e05555 90%);-webkit-background-clip:text;background-clip:text;color:transparent;position:relative;padding-bottom:8px}
+    #edrSplash .sp-name::after{content:'';position:absolute;left:50%;bottom:0;width:0;height:2.5px;border-radius:2px;background:linear-gradient(90deg,#e05555,#fff);transform:translateX(-50%);animation:sp-underline 1.4s ease-out .25s forwards}
+    @keyframes sp-underline{to{width:74%}}
+    #edrSplash .sp-row{display:flex;align-items:center;gap:10px;margin-top:2px}
+    #edrSplash .sp-msg{font-size:12.5px;color:#a8a8a8;min-height:16px;letter-spacing:.3px}
+    #edrSplash .sp-pct{font-size:11px;font-weight:700;color:#e05555;font-variant-numeric:tabular-nums;letter-spacing:.8px;padding:2px 8px;border-radius:999px;background:rgba(224,85,85,.12);border:1px solid rgba(224,85,85,.3)}
+    #edrSplash .sp-ver{position:absolute;bottom:20px;font-size:10.5px;color:#5a5a5a;letter-spacing:1.5px}
+    @media (prefers-reduced-motion:reduce){#edrSplash .sp-ring,#edrSplash .sp-logo::after,#edrSplash .sp-logo svg,#edrSplash .sp-ring::after,#edrSplash .sp-name::after{animation:none}}
   </style>
 </head>
 <body>
@@ -60,9 +69,11 @@
       </div>
     </div>
     <div class="sp-name">Taller</div>
-    <div class="sp-msg" id="spMsg">Preparando almacenamiento…</div>
-    <div class="sp-pct" id="spPct">0%</div>
-    <div class="sp-ver">EDR · v55</div>
+    <div class="sp-row">
+      <span class="sp-msg" id="spMsg">Preparando almacenamiento…</span>
+      <span class="sp-pct" id="spPct">0%</span>
+    </div>
+    <div class="sp-ver">EDR · v63</div>
   </div>
   <!-- LOGIN -->
   <section id="loginScreen" class="login-screen hidden">
@@ -105,6 +116,10 @@
           </div>
         </div>
         <div class="topbar-actions">
+          <button class="icon-btn" id="headerPendBtn" title="Pendientes" aria-label="Pendientes">
+            <svg viewBox="0 0 24 24" class="ico"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+            <span class="pend-badge" id="pendBadge" hidden></span>
+          </button>
           <button class="icon-btn" id="headerSearchBtn" title="Buscar" aria-label="Buscar">
             <svg viewBox="0 0 24 24" class="ico"><path d="M21 20l-5.6-5.6a8 8 0 1 0-1.4 1.4L19.6 21.4 21 20zM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0z"/></svg>
           </button>
@@ -149,26 +164,29 @@
     </nav>
   </div>
 
-  <!-- Modal -->
+  <!-- Modal — v57: cabecera fija propia (el botón CERRAR siempre visible
+       al hacer scroll, grande y rojo) + cuerpo scrolleable por separado -->
   <div id="modal" class="modal hidden">
     <div class="modal-card">
-      <button class="modal-close" id="modalClose">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
-      </button>
-      <div id="modalBody"></div>
+      <div class="modal-head">
+        <button class="modal-close" id="modalClose" aria-label="Cerrar ventana">
+          <svg viewBox="0 0 24 24" class="ico"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+        </button>
+      </div>
+      <div class="modal-scroll"><div id="modalBody"></div></div>
     </div>
   </div>
 
   <div id="toast" class="toast hidden"></div>
 
-  <script src="js/db.min.js?v=59"></script>
-  <script src="js/sync.min.js?v=59"></script>
-  <script src="js/auth.min.js?v=59"></script>
+  <script src="js/db.min.js?v=63"></script>
+  <script src="js/sync.min.js?v=63"></script>
+  <script src="js/auth.min.js?v=63"></script>
   <!-- v53: PWA no es crítico para el primer render → defer (no bloquea) -->
-  <script src="js/install.min.js?v=59" defer></script>
-  <script src="js/ui.min.js?v=59"></script>
-  <script src="js/views.min.js?v=59"></script>
-  <script src="js/app.min.js?v=59"></script>
+  <script src="js/install.min.js?v=63" defer></script>
+  <script src="js/ui.min.js?v=63"></script>
+  <script src="js/views.min.js?v=63"></script>
+  <script src="js/app.min.js?v=63"></script>
   <script>
     // ====== Service Worker + auto-actualización (v40) ======
     // La app se actualiza sola: al abrir, al recuperar conexión, al

@@ -26,14 +26,15 @@ const Views = (() => {
     print: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8v5zm3-7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12V3z"/></svg>'
   };
 
-  const STATUS_KEYS = ['pending','in_progress','completed','delivered','cancelled'];
+  const STATUS_KEYS = ['pending','in_progress','completed','delivered','cancelled','no_devolution'];
   const FILTERS = [
     {k:'all',label:'Todas'},
     {k:'pending',label:'Pendientes'},
     {k:'in_progress',label:'En proceso'},
     {k:'completed',label:'Completadas'},
     {k:'delivered',label:'Entregadas'},
-    {k:'cancelled',label:'Canceladas'}
+    {k:'cancelled',label:'Canceladas'},
+    {k:'no_devolution',label:'Sin devolución'}
   ];
 
   function emptyState(t,s){
@@ -196,6 +197,12 @@ const Views = (() => {
     const completed = DB.byStatus('completed').length;
     const delivered = DB.byStatus('delivered').length;
     const cancelled = DB.byStatus('cancelled').length;
+    const noDev = DB.byStatus('no_devolution').length;
+    // v61 — equipos estancados (regla del taller) para el aviso del Inicio:
+    const staleNow = DB.staleCompute();
+    const stale30 = staleNow.list30.filter(x=>!(x.r.staleDismissed&&x.r.staleDismissed.s30)).length;
+    const staleND = staleNow.listND.filter(x=>!(x.r.staleDismissed&&x.r.staleDismissed.nd)).length;
+    const staleFeeN = staleNow.fee30.length;
     const todayPending = DB.todayPending().length;
     const sortKey = Views._dashSort || 'recent';
     const recent = applySort(repairs, sortKey).slice(0,5);
@@ -205,8 +212,14 @@ const Views = (() => {
       <div class="dash-counter" style="margin:-6px 4px 14px">
         <span class="dash-counter-lbl">Reparaciones registradas en el sistema</span>
         <span class="dash-counter-num">${repairs.length}</span>
-        <span class="dash-counter-sub">${pending} pendientes · ${inProgress} en proceso · ${delivered} entregadas</span>
       </div>
+      ${(stale30+staleND+staleFeeN)>0 ? `
+        <div class="admin-card" style="border-left:3px solid #e05555;background:linear-gradient(90deg,rgba(224,85,85,.1),var(--surface))">
+          <div class="row-between"><div>
+            <h3>⏱ Equipos demorados en el taller</h3>
+            <p>${staleFeeN>0?`<b>${staleFeeN}</b> con recargo acumulándose ($ 100/día tras 15 días en Completada). `:''}${stale30>0?`<b>${stale30}</b> llevan <b>más de 30 días</b> sin entregarse. `:''}${staleND>0?`<b>${staleND}</b> pasaron a <b>sin devolución</b> (60 días). `:''}Ábrelos en <b>Resumen</b> para ver todos los datos.</p>
+          </div>${ICONS.clock}</div>
+        </div>` : ''}
       ${window.__v57_movedCompleted ? `
         <div class="admin-card" style="border-left:3px solid var(--gold-glow);background:linear-gradient(90deg,rgba(232,196,106,.08),var(--surface))">
           <div class="row-between"><div>
@@ -1040,6 +1053,11 @@ const Views = (() => {
   // silencio). El botón "Cancelar" devuelve el flujo sin entregar.
   function offerSignatureCapture(id){
     const rec = DB.findRepair(id); if(!rec) return;
+    // v61 — CAPTURA RÁPIDA de la firma: los DOS accesos (Cámara y Galería)
+    // visibles a la vez como botones grandes, cada uno abre SU input
+    // directamente (capture=environment para la cámara). El input de cámara
+    // ya no depende de soporte de getUserMedia: usa la app de cámara del
+    // dispositivo, así que es instantáneo en móvil y PC.
     UI.openModal(`
       <h2 style="margin:0 0 6px;font-size:20px">✍️ Firma del cliente</h2>
       <p class="muted small" style="margin:0 0 12px">
@@ -1055,23 +1073,26 @@ const Views = (() => {
             <svg viewBox="0 0 24 24"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
           </button>
         </div>
-        <div class="btn-row" id="sigBtns">
-          <label class="btn-secondary" style="text-align:center;cursor:pointer">
-            📷 Tomar foto
-            <input type="file" accept="image/*" capture="environment" id="sigCam" hidden>
-          </label>
-          <label class="btn-secondary" style="text-align:center;cursor:pointer">
-            🖼️ Galería
-            <input type="file" accept="image/*" id="sigGal" hidden>
-          </label>
+        <div class="sig-quick-btns" id="sigBtns">
+          <button type="button" class="sig-quick cam">
+            <svg viewBox="0 0 24 24"><path d="M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z"/><path d="M9 3l-1.8 2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 3a6 6 0 1 1 0 12 6 6 0 0 1 0-12z"/></svg>
+            <span>Cámara</span>
+          </button>
+          <button type="button" class="sig-quick gal">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v10l5-5 3.5 3.5L16 11l4 4V6H4zm3 3.5A1.75 1.75 0 1 1 7.75 6 1.75 1.75 0 0 1 7 9.5z"/></svg>
+            <span>Galería</span>
+          </button>
+          <input type="file" accept="image/*" ${('capture' in HTMLInputElement.prototype || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) ? 'capture="environment"' : ''} id="sigCam" hidden>
+          <input type="file" accept="image/*" id="sigGal" hidden>
         </div>
       </div>
       <div class="btn-row" style="margin-top:14px">
         <button type="button" class="btn-primary" id="sigDone" disabled>✓ Guardar firma</button>
       </div>
       <p class="muted small" style="margin:10px 4px 0">
-        La entrega <b>requiere</b> la foto de la firma. Cierra y vuelve cuando
-        la tengas; la reparación queda en <b>Completada</b>.
+        Recomendado: la foto de la firma deja constancia de quién retiró el
+        equipo. Si no la tienes ahora, cierra y vuelve después; la reparación
+        queda en <b>Completada</b> hasta que la marques <b>Entregada</b>.
       </p>
     `);
     let sig = null;
@@ -1097,6 +1118,12 @@ const Views = (() => {
     }
     document.getElementById('sigCam').onchange = e=>{ pick(e.target.files[0]); e.target.value=''; };
     document.getElementById('sigGal').onchange = e=>{ pick(e.target.files[0]); e.target.value=''; };
+    // v61 — ACCESO RÁPIDO: los botones grandes abren el input DIRECTAMENTE
+    // (un toque menos que los labels de antes) y ambos quedan a la vista.
+    const camBtn = document.querySelector('#sigBtns .sig-quick.cam');
+    const galBtn = document.querySelector('#sigBtns .sig-quick.gal');
+    if(camBtn) camBtn.onclick = ()=> document.getElementById('sigCam').click();
+    if(galBtn) galBtn.onclick = ()=> document.getElementById('sigGal').click();
     document.getElementById('sigRm').onclick = ()=>{ sig = null; renderSig(); };
     doneBtn.onclick = async ()=>{
       if(!sig) return;
@@ -1119,6 +1146,21 @@ const Views = (() => {
     };
   }
 
+  // v57 — Texto de ayuda bajo el selector de estado, COLOREADO según el
+  // estado elegido (mismo código de color del badge). Explica qué significa
+  // cada estado respecto al COBRO — la ganancia del Resumen vive en las
+  // Entregadas, que es cuando se cobra la reparación.
+  function statusHelpHtml(r){
+    const map = {
+      pending:      '⏳ <b>Pendiente</b> — el equipo está en espera; todavía no hay trabajo ni cobro.',
+      in_progress: '🔧 <b>En proceso</b> — trabajando en el equipo ahora. El importe va a «por cobrar».',
+      completed:    '🔵 <b>Completada</b> — trabajo terminado, <b>sin entregar todavía</b>. Toma la foto de la firma y márcala Entregada para cobrarla.',
+      delivered:    '🟢 <b>Entregada</b> — equipo entregado y <b>reparación cobrada</b>: ya suma en la ganancia del Resumen.',
+      cancelled:    '✖️ <b>Cancelada</b> — fuera del taller; no cuenta en la ganancia.',
+      no_devolution: '🟣 <b>Sin devolución</b> — más de 60 días en el taller: el equipo se considera no reclamado. El registro se conserva completo en el historial y puedes revertirlo si el cliente aparece.'
+    };
+    return map[r.status] || '';
+  }
   function showRepair(id){
     const r = DB.findRepair(id);
     if(!r) return;
@@ -1204,9 +1246,11 @@ const Views = (() => {
         <div class="section-title">Firma del cliente (entrega)</div>
         <div class="sig-shot">
           <img src="${r.signaturePhoto}" id="detailSignature" alt="Firma del cliente al recibir el equipo" style="cursor:zoom-in">
-        </div>` : (r.status==='completed' ? `
-        <div class="section-title">Firma del cliente (pendiente de entrega)</div>
-        <p class="muted small" style="margin:-4px 0 8px">Guarda la foto de la firma <b>antes</b> de cambiar el estado a Entregada.</p>
+        </div>` : (r.status==='completed' || r.status==='delivered' ? `
+        <div class="section-title">Firma del cliente (pendiente)</div>
+        <p class="muted small" style="margin:-4px 0 8px">${r.status==='completed'
+          ? 'Guarda la foto de la firma <b>antes</b> de cambiar el estado a Entregada.'
+          : 'Esta reparación está Entregada sin foto de firma: guárdala para dejar constancia de la entrega.'}</p>
         <div class="btn-row">
           <button type="button" class="btn-primary" id="sigPendingBtn">✍️ Tomar / elegir foto de la firma</button>
         </div>` : '')}
@@ -1219,13 +1263,24 @@ const Views = (() => {
       <div class="section-title">Cambiar estado</div>
       <div class="select-elegant">
         <select id="quickStatus">
-          ${['pending','in_progress','completed','delivered','cancelled'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
+          ${['pending','in_progress','completed','delivered','cancelled','no_devolution'].map(s=>`<option value="${s}" ${r.status===s?'selected':''}>${statusLabel(s)||s}</option>`).join('')}
         </select>
       </div>
+      <div id="statusHelp" class="status-help ${r.status}">${statusHelpHtml(r)}</div>
+      ${(()=> {
+        // v61 — fila del recargo por retraso (si está activo o ya cobrado)
+        const late = Number(r.lateFee||0);
+        const charged = Number(r.lateFeeCharged||0);
+        if(late<=0 && charged<=0) return '';
+        return `<div class="detail-row"><span class="lbl">Recargo por retraso</span><span class="val">${late>0
+          ? `+$ ${late.toFixed(2)} acumulándose (${r.lateFeeDays||'?'} día(s) × $ 100 · se cobra al entregar)`
+          : `$ ${charged.toFixed(2)} ya cobrado en la entrega (${r.lateFeeDays||'?'} día(s))`}</span></div>`;
+      })()}
       <div id="sigBox"></div>
-      <div class="btn-row three">
+      <div class="btn-row four">
         <button class="btn-secondary" id="editBtn">${ICONS.edit} Editar</button>
         <button class="btn-secondary" id="ticketBtn">${ICONS.print} Etiqueta</button>
+        <button class="btn-secondary" id="dupBtn" title="Duplicar con ID nuevo">${ICONS.plus} Duplicar</button>
         <button class="btn-primary btn-cancel" id="delBtn">${ICONS.trash} Eliminar</button>
       </div>
     `;
@@ -1251,6 +1306,10 @@ const Views = (() => {
 
     document.getElementById('quickStatus').addEventListener('change', async e=>{
       const newStatus = e.target.value;
+      // v57 — el texto de ayuda de abajo se recolorea al instante con el
+      // estado elegido (aunque aún no se guarde), para saber qué significa.
+      const helpEl = document.getElementById('statusHelp');
+      if(helpEl){ helpEl.className = 'status-help ' + newStatus; helpEl.innerHTML = statusHelpHtml({ ...r, status:newStatus }); }
       if(newStatus === 'cancelled' && r.status !== 'cancelled'){
         const ok = await UI.confirmDialog({
           title:'Cancelar reparación',
@@ -1296,6 +1355,7 @@ const Views = (() => {
     if(sigPending) sigPending.onclick = ()=> offerSignatureCapture(id);
     document.getElementById('editBtn').onclick = ()=>{ UI.closeModal(); App.go('new', null, r); };
     document.getElementById('ticketBtn').onclick = ()=>{ showLabel(r); };
+    bindDuplicateBtn(id);
     document.getElementById('delBtn').onclick = async ()=>{
       const ok = await UI.confirmDialog({
         title:'Eliminar reparación',
@@ -2070,6 +2130,11 @@ const Views = (() => {
           LocalFile.loadHandle().then(()=>{ hasLocal = true; paintLocalCardState(); });
         }catch(_){}
       }
+      // v61 — además: repintar ya al abrir Admin por si el handle llegó
+      // entre el paint y ahora (carrera con sync.js loadHandle()).
+      try{
+        if(!hasLocal && LocalFile.hasHandle()) paintLocalCardState();
+      }catch(_){}
       const pl = document.getElementById('pickLoc');
       if(pl) pl.onclick = async ()=>{
         try{ await LocalFile.pickLocation(); UI.toast('Ubicación guardada'); paintLocalCardState(); }
@@ -2080,12 +2145,61 @@ const Views = (() => {
       const lf = document.getElementById('loadFromLoc');
       if(lf) lf.onclick = async ()=>{
         try{
+          // v61 — Asegurar primero que el handle async de IndexedDB ya cargó:
+          // al abrir Administración justo tras arrancar, la carrera dejaba el
+          // botón muerto aunque hubiera ubicación guardada.
+          try{ await LocalFile.loadHandle(); }catch(_){}
+          if(!LocalFile.hasHandle()){
+            UI.toast('Primero elige la ubicación del archivo con «Elegir ubicación»');
+            return;
+          }
           const text = await LocalFile.readText();
-          if(text==null){ UI.toast('No se pudo leer el archivo (¿se movió o borró?). Vuelve a elegir la ubicación.'); return; }
+          if(text==null){
+            // v61 — recuperación guiada: si el archivo se movió/borró o el
+            // permiso cayó, ofrecer RE-ELEGIR la ubicación al instante en
+            // vez de dejar al usuario sin camino.
+            const ok = await UI.confirmDialog({
+              title:'No se pudo leer el archivo',
+              message:'La ubicación guardada ya no es legible (¿se movió, borró o cambió de permiso?). ¿Elegir de nuevo dónde está el archivo?',
+              okText:'Elegir de nuevo', cancelText:'Cancelar'
+            });
+            if(ok){
+              try{
+                await LocalFile.pickLocation();
+                UI.toast('Ubicación guardada · cargando…');
+                const t2 = await LocalFile.readText();
+                if(t2!=null) askImportMode(t2);
+              }catch(e2){ if(e2.name!=='AbortError') UI.toast('Error: '+e2.message); }
+            }
+            return;
+          }
           askImportMode(text);
         }
         catch(e){ UI.toast('Error: '+e.message); }
       };
+    }
+
+    // v61 — «Cargar desde el archivo» no funcionaba: sync.js EMITE
+    // 'localfile-ready' cuando el handle termina de cargar desde IndexedDB,
+    // pero NADIE lo escuchaba → si Administración se pintaba antes de que
+    // loadHandle() resolviera, la tarjeta quedaba congelada en «sin
+    // configurar» y el botón deshabilitado PARA SIEMPRE aunque hubiera
+    // ubicación guardada. Este listener repinta la tarjeta en vivo, tanto si
+    // Admin ya está abierto como si el handle llega tarde (y también tras
+    // guardar una ubicación desde otra vista).
+    if(!window.__localFileReadyBound){
+      window.__localFileReadyBound = true;
+      window.addEventListener('localfile-ready', ()=>{
+        if(typeof LocalFile === 'undefined') return;
+        const st = document.getElementById('localCardState');
+        if(st && LocalFile.hasHandle()){
+          st.innerHTML = 'Estado: <b>Ubicación configurada</b>';
+          const lfBtn = document.getElementById('loadFromLoc');
+          const clrBtn = document.getElementById('clearLoc');
+          if(lfBtn) lfBtn.disabled = false;
+          if(clrBtn) clrBtn.disabled = false;
+        }
+      });
     }
 
     // v56 — IMPORTAR SEGURO: antes de tocar nada se pre-lee el JSON y se
@@ -2482,7 +2596,9 @@ const Views = (() => {
       if(r.status==='delivered'){
         const ts = r.deliveredAt || r.updatedAt || r.createdAt || 0;
         inAll(ts, b=>{ b.repairIncome+=price; b.repairPartsCost+=partsCost; b.countRepairs++; });
-      } else if(r.status!=='cancelled' && price>0){
+      } else if(r.status!=='cancelled' && r.status!=='no_devolution' && price>0){
+        // v61 — «sin devolución» tampoco va a «por cobrar»: el equipo se
+        // considera no reclamado (está en su propia lista del Resumen).
         const dep = Number(r.deposit||0);
         buckets.total.pendingRepair += Math.max(0, price - dep);
       }
@@ -2526,24 +2642,51 @@ const Views = (() => {
     } else if(!isSale){
       profitHtml = `<span class="tx-profit neg">Inversión $ ${total.toFixed(2)}</span>`;
     }
+    // v61 — Plegable: fila compacta (badge+nombre+monto+chevron) y el
+    // resto del detalle desplegable. Así se ven MÁS entradas por pantalla
+    // y se lee mejor; tocar la fila abre el detalle completo sin perder
+    // ningún dato.
     return `
-      <div class="tx-card ${cls}" data-tx-id="${escape(t.id)}">
-        <div class="tx-info">
-          <div class="tx-head">
-            <span class="tx-badge ${cls}">${txLabel(t.type)}</span>
-            <span class="tx-id">${escape(t.id)}</span>
+      <div class="tx-card ${cls} collapsed" data-tx-id="${escape(t.id)}">
+        <div class="tx-collapse-row">
+          <div class="tx-info">
+            <div class="tx-head">
+              <span class="tx-badge ${cls}">${txLabel(t.type)}</span>
+              <h3>${escape(t.product||'Producto')}</h3>
+            </div>
           </div>
-          <h3>${escape(t.product||'Producto')}</h3>
-          <p class="muted small">${qty} × $ ${unit.toFixed(2)}${cp}</p>
-          <p class="muted small">${fmtDate(t.date||t.createdAt)} ${profitHtml}</p>
+          <div class="tx-side">
+            <span class="tx-amount ${cls}">${sign} $ ${total.toFixed(2)}</span>
+            <span class="tx-chev" aria-hidden="true"></span>
+          </div>
         </div>
-        <div class="tx-amount ${cls}">${sign} $ ${total.toFixed(2)}</div>
+        <div class="tx-details">
+          <div class="tx-details-inner">
+            <p class="muted small">${qty} × $ ${unit.toFixed(2)}${cp}</p>
+            <p class="muted small">${fmtDate(t.date||t.createdAt)} ${profitHtml}</p>
+            <p class="muted small tx-id">${escape(t.id)}</p>
+          </div>
+        </div>
       </div>`;
   }
 
+  // v61 — Plegado/despliegue de tarjetas de Compra/Venta: tocar la fila
+  // alterna el detalle (y mantiene un tarjeta abierta como máximo para leer
+  // rápido varias seguidas). El CHEVRON de la fila indica el estado.
   function bindTxCards(){
     view().querySelectorAll('.tx-card').forEach(c=>{
-      c.addEventListener('click', ()=> showTransaction(c.dataset.txId));
+      c.querySelector('.tx-collapse-row').addEventListener('click', e=>{
+        if(e.target.closest('a,button,input')) return;
+        const open = c.classList.contains('open');
+        view().querySelectorAll('.tx-card.open').forEach(o=>o.classList.remove('open'));
+        if(!open) c.classList.add('open');
+        c.classList.toggle('collapsed', !c.classList.contains('open'));
+      });
+      // Los botones de acción (si aparecieran dentro) no alternan el pliegue
+      c.addEventListener('click', e=>{
+        if(e.target.closest('.tx-collapse-row')) return;
+        showTransaction(c.dataset.txId);
+      });
     });
   }
 
@@ -2813,6 +2956,101 @@ const Views = (() => {
   }
 
 
+  // =============================================================
+  // v61 — SECCIONES DE ESTANCAMIENTO en el Resumen (regla del taller):
+  // · Recargo por días (+100/día tras 15 en Completada): tarjeta de aviso.
+  // · «Más de 30 días sin entregar»: lista desplegable con TODOS los datos
+  //   de cada reparación y botón «Quitar de la lista» (solo la lista;
+  //   el registro sigue en el historial).
+  // · «Equipos sin devolución» (más de un mes más, 60 días): lista propia
+  //   desplegable igual, también quitable. El estado del registro pasa a
+  //   Sin devolución (morado) en todas las vistas.
+  // =============================================================
+  function staleListHtml(){
+    const st = DB.staleCompute();
+    const hasFee = st.fee30.length > 0;
+    const totalFee = st.fee30.reduce((a,x)=>a+Number(x.fee||0),0);
+    const list30 = st.list30.filter(x=> !(x.r.staleDismissed && x.r.staleDismissed.s30));
+    const listND = st.listND.filter(x=> !(x.r.staleDismissed && x.r.staleDismissed.nd));
+    const hidden = (st.list30.length - list30.length) + (st.listND.length - listND.length);
+    const row = (x, which)=>{
+      const r = x.r;
+      const late = Number(r.lateFee||0);
+      return `
+        <div class="stale-item" data-stale-id="${escape(r.id)}" data-stale-which="${which}">
+          <div class="stale-row">
+            <span class="status ${r.status}">${statusLabel(r.status)}</span>
+            <span class="stale-days">${x.days} día(s)</span>
+            <button type="button" class="stale-remove" title="Quitar de la lista (el registro se conserva)">Quitar</button>
+          </div>
+          <h4>${escape(r.clientName||'Cliente')} · ${escape(r.device||'Equipo')}</h4>
+          <div class="stale-grid">
+            <span><b>ID:</b> ${escape(r.id)}</span>
+            <span><b>Precio:</b> $ ${Number(r.price||0).toFixed(2)}</span>
+            <span><b>Depósito:</b> $ ${Number(r.deposit||0).toFixed(2)}</span>
+            <span><b>Teléfono:</b> ${escape(r.clientPhone||'—')}</span>
+            <span><b>Ingreso:</b> ${fmtDate(r.createdAt)}</span>
+            <span><b>Entrega prometida:</b> ${r.dueDate?fmtDate(r.dueDate):'—'}</span>
+            <span><b>Falla:</b> ${escape((r.issue||'—').slice(0,60))}</span>
+            <span><b>Marca/Modelo:</b> ${escape(r.brand||'—')} ${escape(r.model||'')}</span>
+            ${late>0 ? `<span class="stale-fee"><b>Recargo por retraso:</b> +$ ${late.toFixed(2)} (${r.lateFeeDays||'?'} día(s) × $ ${Number(r.lateFeePerDay||100).toFixed(2)})</span>` : ''}
+            ${Number(r.lateFeeCharged||0)>0 ? `<span><b>Recargo ya cobrado:</b> $ ${Number(r.lateFeeCharged||0).toFixed(2)}</span>` : ''}
+            ${r.signaturePhoto ? '<span><b>Firma:</b> sí</span>' : '<span><b>Firma:</b> pendiente</span>'}
+          </div>
+        </div>`;
+    };
+    return `
+      ${hasFee ? `
+      <div class="stale-fee-card">
+        <h3>⏱ Recargo por días (${st.fee30.length})</h3>
+        <p>Completadas sin entregar hace más de <b>15 días</b>: el precio de cada una sube
+        <b>$ 100 por día</b> desde el día 16. El recargo se cobra al momento de la entrega.</p>
+        <p class="stale-fee-total">Recargo acumulado en espera: <b>$ ${totalFee.toFixed(2)}</b></p>
+      </div>` : ''}
+
+      <div class="acc-card ${list30.length? '' : 'dim'}">
+        <button class="acc-head" data-acc type="button">
+          <span class="acc-ico">${ICONS.clock}</span>
+          <span class="acc-title">Más de 30 días en el taller (${list30.length})</span>
+          <span class="acc-sub">Sin entregar · toca para abrir o cerrar</span>
+          <span class="acc-chev"></span>
+        </button>
+        <div class="acc-body">
+          ${list30.length ? list30.map(x=>row(x,'s30')).join('')
+            : '<p class="muted small" style="margin:4px 2px">Ningún equipo pasa de 30 días sin entregarse.</p>'}
+        </div>
+      </div>
+
+      <div class="acc-card ${listND.length? '' : 'dim'}">
+        <button class="acc-head" data-acc type="button">
+          <span class="acc-ico">${ICONS.clock}</span>
+          <span class="acc-title">Equipos sin devolución (${listND.length})</span>
+          <span class="acc-sub">Más de 60 días · toca para abrir o cerrar</span>
+          <span class="acc-chev"></span>
+        </button>
+        <div class="acc-body">
+          ${listND.length ? listND.map(x=>row(x,'nd')).join('')
+            : '<p class="muted small" style="margin:4px 2px">Ningún equipo pasó a «sin devolución».</p>'}
+          ${hidden>0 ? `<p class="muted small" style="margin:8px 2px 2px">${hidden} equipo(s) oculto(s) de las listas (quitarlos no borra nada del historial).</p>` : ''}
+        </div>
+      </div>`;
+  }
+
+  function bindStaleLists(){
+    view().querySelectorAll('.stale-remove').forEach(b=>{
+      b.onclick = e=>{
+        e.stopPropagation();
+        const item = b.closest('.stale-item');
+        const id = item.dataset.staleId;
+        const which = item.dataset.staleWhich;
+        DB.staleDismiss(id, which);
+        UI.toast('Quitado de la lista · el registro sigue en el historial');
+        summary();
+      };
+    });
+    bindAccordions();
+  }
+
   function summary(){
     const _stats = computeAllStats();
     const _gT = _stats.total.totalProfit;
@@ -2835,6 +3073,8 @@ const Views = (() => {
           terminadas o en curso que aún no se entregaron (se suman al momento de la entrega).
         </span>` : ''}
       </div>
+
+      ${staleListHtml()}
 
 
       <div class="acc-card cv-stats-card open">
@@ -2871,7 +3111,7 @@ const Views = (() => {
         <button class="btn-secondary" id="goCvBtn">${ICONS.box} Ir a Compra/Venta</button>
       </div>
     `;
-    bindAccordions();
+    bindStaleLists();
     bindMonthlyBreakdown();
     const gb = document.getElementById('goCvBtn');
     if(gb) gb.onclick = ()=> App.go('sales');
@@ -3038,6 +3278,222 @@ const Views = (() => {
     bindAccordions();
     bindStockInputs();
     bindTxCards();
+  }
+
+  // =============================================================
+  // v63 — PENDIENTES (citas/trabajos por hacer): lista independiente de
+  // las reparaciones. Nombre, teléfono, fecha, dirección y detalles.
+  // Guardado en el dispositivo (IndexedDB) + sincronización por el índice
+  // de GitHub (index.json) junto a las transacciones.
+  // =============================================================
+  function pendings(){
+    const list = DB.pendings.slice().sort((a,b)=>(b.date||b.createdAt||0)-(a.date||a.createdAt||0));
+    const active = list.filter(p=>!p.done);
+    const done = list.filter(p=>p.done);
+    const card = (p)=>{
+      const tel = UI.phoneClean(p.phone||'');
+      const dateStr = p.date ? fmtDate(p.date) : '—';
+      const overdue = p.date && !p.done && p.date < Date.now();
+      return `
+      <div class="pend-card ${p.done?'done':''} ${overdue?'overdue':''}" data-pend-id="${escape(p.id)}">
+        <div class="pend-row">
+          <button type="button" class="pend-check" title="${p.done?'Reabrir':'Marcar hecho'}" aria-label="Marcar">${p.done?'↺':'✓'}</button>
+          <div class="pend-info">
+            <h3>${escape(p.name||'Sin nombre')}</h3>
+            <p class="muted small">${dateStr}${p.phone?` · <a class="phone-link" href="tel:${escape(tel)}">${escape(p.phone)}</a>`:''}</p>
+          </div>
+          <div class="pend-actions">
+            <button type="button" class="pend-act" data-act="edit" title="Editar">${ICONS.edit}</button>
+            <button type="button" class="pend-act danger" data-act="del" title="Eliminar">${ICONS.trash}</button>
+          </div>
+        </div>
+        ${(p.address || p.details) ? `
+        <div class="pend-extra">
+          ${p.address?`<p class="muted small">📍 ${escape(p.address)}</p>`:''}
+          ${p.details?`<p class="muted small">📝 ${escape(p.details)}</p>`:''}
+        </div>`:''}
+      </div>`;
+    };
+    view().innerHTML = `
+      <div class="greeting">Pendientes <span>por hacer</span></div>
+      <p class="muted small" style="margin:-8px 4px 14px">Citas, encargos y trabajos futuros. Se guardan y sincronizan con el resto del taller.</p>
+      <div class="btn-row" style="margin:0 0 16px">
+        <button class="btn-primary" id="newPendBtn">${ICONS.plus} Nuevo pendiente</button>
+      </div>
+      ${active.length ? active.map(card).join('') : `
+        <div class="empty">${ICONS.box.replace('class="ico"','class="ico lg"')}<h3>Sin pendientes</h3><p>Toca «Nuevo pendiente» para apuntar una cita o encargo.</p></div>`}
+      ${done.length ? `
+        <div class="section-title" style="margin-top:22px">Hechos (${done.length})</div>
+        ${done.map(card).join('')}` : ''}
+    `;
+    const nb = document.getElementById('newPendBtn');
+    if(nb) nb.onclick = ()=> App.go('pendingForm', null, null);
+    // Marcar hecho / reabrir
+    view().querySelectorAll('.pend-check').forEach(b=>{
+      b.onclick = e=>{
+        e.stopPropagation();
+        const id = b.closest('.pend-card').dataset.pendId;
+        const p = DB.findPending(id);
+        if(!p) return;
+        DB.updatePending(id, { done: !p.done, doneAt: p.done?null:Date.now() });
+        UI.toast(p.done?'Marcado como hecho':'Reabierto');
+        try{ App.updatePendBadge(); }catch(_){}
+        pendings();
+      };
+    });
+    // Editar / eliminar
+    view().querySelectorAll('.pend-act').forEach(b=>{
+      b.onclick = async e=>{
+        e.stopPropagation();
+        const id = b.closest('.pend-card').dataset.pendId;
+        if(b.dataset.act==='edit'){
+          const p = DB.findPending(id);
+          if(p) App.go('pendingForm', null, p);
+          return;
+        }
+        const ok = await UI.confirmDialog({
+          title:'Eliminar pendiente',
+          message:'¿Eliminar este pendiente? Esta acción no se puede deshacer.',
+          okText:'Eliminar', cancelText:'Cancelar', danger:true
+        });
+        if(!ok) return;
+        DB.deletePending(id);
+        UI.toast('Pendiente eliminado');
+        try{ App.updatePendBadge(); }catch(_){}
+        pendings();
+      };
+    });
+    try{ App.updatePendBadge(); }catch(_){}
+  }
+
+  function pendingForm(existing){
+    const p = existing || {};
+    view().innerHTML = `
+      <button type="button" class="form-close" id="formCloseTop" title="Cerrar">${ICONS.close}</button>
+      <h2 style="margin:0 0 16px;font-size:20px;padding-right:50px">${existing?'Editar pendiente':'Nuevo pendiente'}</h2>
+      <form id="pendingFormEl" novalidate>
+        <div class="form-group">
+          <label>Nombre *</label>
+          <input name="name" required autocapitalize="words" value="${escape(p.name||'')}" placeholder="Quién o qué">
+        </div>
+        <div class="form-group">
+          <label>Teléfono</label>
+          <input name="phone" inputmode="tel" value="${escape(p.phone||'')}" placeholder="+58 412 0000000">
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input name="date" type="date" value="${p.date?fmtDateInput(p.date):''}">
+        </div>
+        <div class="form-group">
+          <label>Dirección</label>
+          <textarea name="address" rows="2" placeholder="Dónde">${escape(p.address||'')}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Detalles</label>
+          <textarea name="details" rows="3" placeholder="Qué hay que hacer / recordar">${escape(p.details||'')}</textarea>
+        </div>
+        <div class="btn-row">
+          <button type="submit" class="btn-primary">${existing?'Guardar cambios':'Agregar pendiente'}</button>
+          <button type="button" class="btn-secondary" id="cancelPendBtn">Cancelar</button>
+        </div>
+      </form>
+    `;
+    document.getElementById('formCloseTop').onclick = ()=> App.go('pendings');
+    document.getElementById('cancelPendBtn').onclick = ()=> App.go('pendings');
+    document.getElementById('pendingFormEl').addEventListener('submit', e=>{
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const name = (fd.get('name')||'').trim();
+      if(!name){ UI.toast('Escribe el nombre'); return; }
+      const dateRaw = fd.get('date');
+      const data = {
+        name,
+        phone: (fd.get('phone')||'').trim() || null,
+        date: dateRaw ? UI.localNoon(dateRaw) : null,
+        address: (fd.get('address')||'').trim() || null,
+        details: (fd.get('details')||'').trim() || null
+      };
+      if(existing){
+        DB.updatePending(existing.id, data);
+        UI.toast('Pendiente actualizado');
+      } else {
+        const np = DB.addPending(data);
+        UI.toast('Pendiente agregado: '+np.id);
+      }
+      try{ App.updatePendBadge(); }catch(_){}
+      App.go('pendings');
+    });
+  }
+
+  // v63 — Duplicar reparación con confirmación + diálogo de qué datos
+  // eliminar de la copia. La copia recibe ID nuevo y queda DEBAJO de la
+  // original en la lista.
+  async function duplicateRepairDialog(id){
+    const r = DB.findRepair(id);
+    if(!r) return;
+    // Paso 1: confirmación general
+    const ok = await UI.confirmDialog({
+      title:'Duplicar reparación',
+      message:`Se creará una COPIA nueva de ${r.id} (${r.clientName||'cliente'} · ${r.device||'equipo'}) con ID nuevo, insertada debajo de la original en la lista. La copia arranca como Pendiente, sin firma ni recargos. ¿Continuar?`,
+      okText:'Sí, duplicar', cancelText:'Cancelar'
+    });
+    if(!ok) return;
+    // Paso 2: elegir qué datos VACIAR en la copia
+    const FIELDS = [
+      ['clientName','Nombre del cliente'],
+      ['clientPhones','Teléfono(s)'],
+      ['clientAddress','Dirección'],
+      ['clientIdNumber','Nº de identidad'],
+      ['clientPhotos','Fotos del cliente'],
+      ['device','Equipo'],
+      ['brand','Marca'],
+      ['model','Modelo'],
+      ['serial','Nº de serie'],
+      ['devicePhotos','Fotos del equipo'],
+      ['issue','Falla reportada'],
+      ['notes','Notas'],
+      ['price','Precio'],
+      ['deposit','Anticipo'],
+      ['dueDate','Fecha de entrega'],
+      ['warrantyDays','Garantía (días)'],
+      ['parts','Piezas'],
+      ['acceptAudio','Audio de aceptación']
+    ];
+    const withData = FIELDS.filter(([k])=>{
+      if(k==='clientPhones') return (r.clientPhones||[]).length || r.clientPhone;
+      if(k==='clientPhotos') return (r.clientPhotos||[]).length || r.clientPhoto;
+      if(k==='devicePhotos') return (r.devicePhotos||[]).length || r.devicePhoto;
+      if(k==='parts') return (r.parts||[]).length;
+      if(k==='acceptAudio') return !!r.acceptAudio;
+      if(k==='dueDate'||k==='warrantyDays'||k==='price'||k==='deposit') return r[k] != null;
+      return !!(r[k] && String(r[k]).trim());
+    });
+    const checks = withData.map(([k,lbl])=>`
+      <label class="dup-field-check"><input type="checkbox" data-drop="${k}">
+      <span>Vaciar «${escape(lbl)}» en la copia</span></label>`).join('');
+    UI.openModal(`
+      <h2 style="margin:0 0 6px;font-size:19px">Duplicar ${escape(r.id)}</h2>
+      <p class="muted small" style="margin:0 0 12px">Marca los datos que quieres <b>ELIMINAR de la copia</b> (quedarán vacíos). Los no marcados se copian tal cual.</p>
+      <div class="dup-fields-list">${checks || '<p class="muted small">La reparación casi no tiene datos: la copia saldrá limpia.</p>'}</div>
+      <div class="btn-row" style="margin-top:14px">
+        <button type="button" class="btn-secondary" id="dupCancel">Cancelar</button>
+        <button type="button" class="btn-primary" id="dupGo">Crear la copia</button>
+      </div>
+    `);
+    document.getElementById('dupCancel').onclick = ()=> UI.closeModal();
+    document.getElementById('dupGo').onclick = ()=>{
+      const drop = [...document.querySelectorAll('.dup-field-check input:checked')].map(i=>i.dataset.drop);
+      const copy = DB.duplicateRepair(id, drop);
+      UI.closeModal();
+      UI.toast('✓ Copia creada: '+copy.id+' (debajo de la original)');
+      App.go('repairs');
+    };
+  }
+
+  // v63 — Enlace del botón «Duplicar» en el detalle de una reparación:
+  function bindDuplicateBtn(id){
+    const btn = document.getElementById('dupBtn');
+    if(btn) btn.onclick = ()=> duplicateRepairDialog(id);
   }
 
 
@@ -3405,5 +3861,5 @@ const Views = (() => {
     }catch(e){}
   }
 
-  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, summary, newTransaction, newChooser, runSystemAudit, openAudit, autoAuditOnLoad };
+  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, summary, newTransaction, newChooser, runSystemAudit, openAudit, autoAuditOnLoad, pendings, pendingForm };
 })();

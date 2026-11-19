@@ -162,7 +162,7 @@ const UI = (() => {
     return ({
       pending:'Pendiente', in_progress:'En proceso',
       awaiting:'Esperando recogida', completed:'Completada', delivered:'Entregada',
-      cancelled:'Cancelada'
+      cancelled:'Cancelada', no_devolution:'Sin devolución'
     })[s] || s;
   }
   // Render del nombre del sistema con segunda palabra en marrón
@@ -372,25 +372,37 @@ const UI = (() => {
     let mediaRec = null, chunks = [], stream = null, startedAt = 0, tickTimer = null;
     return {
       async start(onTick){
-        // pedimos buena calidad y sin procesamiento agresivo que entrecorta voz
+        // v61 — CALIDAD DE GRABACIÓN mejorada:
+        // · Opus a 192 kbps (transparente para voz; antes 128 kbps).
+        // · SIN autoGainControl: aplasta la dinámica de la voz y hace
+        //   "bombeo" (sube/baja el volumen constantemente).
+        // · echoCancellation solo si se habla cerca del micrófono del propio
+        //   equipo (grabación de notas de taller: no hay llamada, no hace
+        //   falta; quitarlo evita filtrado extra). noiseSuppression suave
+        //   se mantiene porque el taller tiene ruido de fondo.
+        // · sampleRate 48 kHz mono nativo.
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
             channelCount: 1,
             sampleRate: 48000,
-            echoCancellation: true,
+            echoCancellation: false,
             noiseSuppression: true,
-            autoGainControl: true
+            autoGainControl: false
           }
         });
         chunks = [];
         const mime = pickAudioMime();
-        const opts = { audioBitsPerSecond: 128000 };
+        const opts = { audioBitsPerSecond: 192000 };
         if(mime) opts.mimeType = mime;
         try{
           mediaRec = new MediaRecorder(stream, opts);
         }catch(e){
-          // fallback sin opciones
-          mediaRec = new MediaRecorder(stream);
+          try{
+            // v61 — algunos navegadores viejos no aceptan bitrate alto:
+            mediaRec = new MediaRecorder(stream, { ...(mime?{mimeType:mime}:{}) });
+          }catch(e2){
+            mediaRec = new MediaRecorder(stream);
+          }
         }
         mediaRec.ondataavailable = e => { if(e.data && e.data.size) chunks.push(e.data); };
         // timeslice 1000ms = recoge datos cada segundo (evita pérdidas si algo interrumpe)

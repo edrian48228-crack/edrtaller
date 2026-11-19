@@ -1,8 +1,104 @@
-# Taller — PWA de reparaciones (v6.2.7)
+# Taller — PWA de reparaciones (v6.4.0)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## v6.4.0 — Duplicar reparaciones y Pendientes
+
+- **Duplicar reparación (con confirmación)**: nuevo botón «Duplicar» en el
+  detalle de cada reparación. Pide confirmación y luego muestra un diálogo
+  con TODOS los datos que tiene la reparación para que marques los que
+  quieres **eliminar de la copia** (nombre, teléfonos, dirección, identidad,
+  fotos, equipo, marca, modelo, serie, falla, notas, precio, anticipo,
+  entrega, garantía, piezas, audio…). La copia recibe un **ID nuevo**, se
+  inserta **debajo de la original** en la lista, arranca como Pendiente
+  sin firma ni recargos, y guarda de dónde viene (`duplicatedFrom`).
+- **Pendientes (nueva lista)**: icono en la barra superior junto al buscar.
+  Cada pendiente guarda nombre, teléfono, fecha, dirección y detalles;
+  se marcan hechos, se editan y se eliminan con confirmación. El botón
+  lleva un **contador** de pendientes activos que se actualiza solo
+  (también al recibir cambios desde la nube).
+- **Sincronización real de pendientes**: viajan dentro de `index.json`
+  junto a las transacciones (datos livianos). El motor de GitHub los
+  sube, los baja en cada dispositivo, fusiona ediciones por novedad
+  (`updatedAt`), conserva los locales no subidos y propaga las
+  eliminaciones con tombstones — mismo criterio anti-pérdida que el resto
+  del sistema. Contador de IDs propio (`P0001…`) con sufijo de
+  dispositivo para evitar colisiones entre móviles.
+
+## v6.3.0 — Administración, Compra/Venta plegable, audio, firma y regla de días
+
+- **«Cargar desde el archivo» arreglado**: el botón de Administración ahora
+  espera el handle del archivo (que carga asincrónico de IndexedDB), escucha
+  el aviso de «ubicación lista» y se habilita al instante; y si el archivo
+  se movió o perdió permiso, ofrece re-elegir la ubicación en el mismo
+  momento con dos toques. Antes quedaba deshabilitado «sin configurar»
+  aunque hubiera ubicación guardada.
+- **Compra/Venta plegable**: cada movimiento se muestra como fila compacta
+  (tipo, producto, monto) y el detalle (cantidad × precio, fecha, ganancia,
+  ID) se despliega al tocar — solo una tarjeta abierta a la vez. Se ven
+  muchas más entradas por pantalla y se lee mejor.
+- **Grabación de audio con mejor calidad**: Opus a 192 kbps (antes 128),
+  sin control automático de ganancia (elimina el «bombeo» de volumen) y sin
+  cancelación de eco (grabación de notas, no llamadas). Menos filtrado, voz
+  más natural.
+- **Firma: captura rápida**: botones grandes «Cámara» y «Galería» a la vez,
+  cada uno abre su selector directamente (un toque menos).
+- **Regla de días del taller** (Resumen):
+  · Completada sin entregar más de **15 días**: el precio sube **$ 100 por
+    día** desde el día 16. El recargo queda registrado (días, tarifa,
+    fecha) y se muestra en el detalle y en el Resumen; se cobra al
+    entregar (se suma al precio en ese momento).
+  · Más de **30 días** en el taller sin entregarse: entra en la lista
+    desplegable «Más de 30 días» con TODOS los datos (cliente, teléfono,
+    ID, precio, depósito, fechas, falla, marca/modelo, firma, recargo).
+  · Un mes más (**60 días**): pasa a **«Equipo sin devolución»** (estado
+    morado) con lista propia igual de desplegable.
+  · Ambas listas tienen botón **Quitar** (solo oculta; el registro queda
+    íntegro en el historial).
+  · **Notificación al entrar al sistema** cuando hay equipos nuevos en las
+    listas, y tarjeta de aviso en el Inicio.
+  · «Sin devolución» no cuenta como «por cobrar» del Resumen (no se mezcla
+    con el dinero esperado de entregas normales). Se puede revertir el
+    estado si el cliente aparece.
+
+## v6.2.9 — Inicio: contador limpio y splash rediseñado
+
+- **Contador del Inicio simplificado**: quitada la sub-línea de resumen
+  («N pendientes · N en proceso · N entregadas») que aparecía debajo de
+  «Reparaciones registradas en el sistema»; queda solo la etiqueta y el
+  número grande dorado. Los estados por separado ya están en las tarjetas
+  de abajo, sin repetirse.
+- **Carga (splash) rediseñada, más vistosa y elegante**: el anillo de
+  progreso ahora late (brillo pulsante con halo suave) mientras el trazo
+  rojo sigue el avance real; el nombre «Taller» tiene subrayado animado
+  al aparecer; el mensaje y el porcentaje van juntos en una fila compacta
+  con el porcentaje en un chip rojo; y la salida es un fundido con zoom
+  sutil. Todo solo CSS (se pinta antes que cualquier JS y no frena el
+  arranque).
+
+## v6.2.8 — Botón cerrar fijo, colores por estado y firma
+
+- **Botón CERRAR siempre visible**: las ventanas fijas (detalle, formularios,
+  captura de firma) ahora tienen una cabecera propia que NO se mueve al
+  hacer scroll — el botón queda arriba a la derecha en todo momento, más
+  grande (46 px) y en ROJO vivo con sombra, imposible de perder. El
+  contenido no queda tapado: fluye debajo de la cabecera. El visor de
+  imágenes tiene su misma X roja (52 px).
+- **Colores por estado con significado de cobro**: Entregada = VERDE
+  brillante (reparación cobrada), Completada = AZUL (terminada pero sin
+  entregar/cobrar), Pendiente = coral, En proceso = ámbar, Cancelada =
+  gris. Bajo el selector de estado, un texto de ayuda del color del estado
+  explica qué significa y se recolorea al instante al elegir otro estado.
+- **Foto de firma del cliente**: flujo verificado de punta a punta —
+  tomar/elegir foto → guardar → confirmación → Entregada con garantía
+  iniciada. Si una reparación ya está Entregada sin firma, el botón
+  también aparece para dejar constancia.
+- **Resumen verificado con números completos**: la ganancia del héroe suma
+  ventas (precio − costo) + reparaciones Entregadas (precio − piezas), y
+  «por cobrar» muestra lo no entregado descontando depósitos. Nada se
+  borra en ningún flujo.
 
 ## v6.2.7 — Estados atascados y contador del Inicio
 

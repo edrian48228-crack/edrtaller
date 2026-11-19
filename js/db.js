@@ -69,6 +69,11 @@ const DB = (() => {
     },
     repairs: [],
     transactions: [],
+    // v63 — PENDIENTES (citas/trabajos por hacer): lista independiente con
+    // nombre, teléfono, fecha, dirección y detalles. Se sincroniza dentro
+    // del índice de GitHub (son datos livianos, sin fotos).
+    pendings: [],
+    pendCounter: 1,
     counter: 1,
     txCounter: 1
   };
@@ -511,6 +516,15 @@ const DB = (() => {
       data.settings.productTypes = DEFAULT_PRODUCTS.slice(); changed = true;
     }
     if(data.settings.defaultWarrantyDays == null){ data.settings.defaultWarrantyDays = 7; changed = true; }
+    // v63 — PENDIENTES: instalaciones anteriores no tenían la lista (ni su
+    // contador). Se crea vacía y el contador arranca por encima del mayor
+    // id existente (por si ya llegó alguno sincronizado).
+    if(!Array.isArray(data.pendings)){ data.pendings = []; changed = true; }
+    if(!data.pendCounter || data.pendCounter < 1){
+      let maxN = 0;
+      for(const p of data.pendings){ const m = /^P(\d+)/.exec(p.id||''); if(m) maxN = Math.max(maxN, +m[1]); }
+      data.pendCounter = maxN + 1; changed = true;
+    }
     if(!data.settings.productMinStock || typeof data.settings.productMinStock!=='object'){
       data.settings.productMinStock = {}; changed = true;
     }
@@ -577,12 +591,98 @@ const DB = (() => {
   }
   async function normAns(s){ return DB._normAnsImpl ? DB._normAnsImpl(s) : sha256(norm(s)); }
 
+  // =============================================================
+  // v61 — MOTOR DE ESTANCAMIENTO (regla del taller):
+  // · >15 días en Completada sin entregar: recargo +100 pesos/DÍA desde
+  //   el día 16 (los 100/día son sobre el precio de la reparación; el
+  //   recargo queda REGISTRADO en el campo lateFee y se muestra en el
+  //   detalle y en el Resumen, pero NO se cobra como ganancia: solo se
+  //   cobra al entregar — se suma al precio al pasar a Entregada).
+  // · >30 días en el taller sin entregarse: entra en la LISTA «más de 30
+  //   días» del Resumen (desplegable, con todos los datos, quitable).
+  // · >60 días (un mes más): pasa a «Equipo sin devolución» (lista propia
+  //   en el Resumen, también desplegable y quitable). Estado interno
+  //   'no_devolution' — sin borrar NADA: el registro íntegro se conserva.
+  // · Notificación al entrar al sistema cuando hay equipos nuevos en
+  //   cualquiera de las dos listas (toast + tarjeta en el Inicio).
+  // · La eliminación de la lista es SOLO de la lista (dismiss): los datos
+  //   siguen en el historial de reparaciones.
+  // =============================================================
+  const LATE_FEE_PER_DAY = 100;        // pesos por día a partir del día 16
+  const LATE_FEE_GRACE_DAYS = 15;      // días de gracia en Completada
+  const STALE_LIST_DAYS = 30;          // entra a la lista «>30 días»
+  const NO_DEVOLUTION_DAYS = 60;       // pasa a «sin devolución»
+
+  function daysSince(ts){ return ts>0 ? Math.floor((Date.now()-ts)/86400000) : 0; }
+
+  function staleCompute(){
+    const list30 = [];
+    const listND = [];
+    const fee30 = [];   // con recargo activo (para el aviso del Resumen)
+    for(const r of data.repairs){
+      if(r.status === 'delivered' || r.status === 'cancelled') continue;
+      const baseTs = r.status === 'completed' ? (r.completedAt || r.updatedAt || r.createdAt) : (r.createdAt || r.updatedAt);
+      const days = daysSince(baseTs);
+      // Recargo: SOLO en Completada (terminada y lista, sin recoger). Las
+      // pendientes/en proceso todavía están siendo trabajadas.
+      if(r.status === 'completed' && days > LATE_FEE_GRACE_DAYS){
+        const feeDays = days - LATE_FEE_GRACE_DAYS;
+        const fee = feeDays * LATE_FEE_PER_DAY;
+        const prev = Number(r.lateFee||0);
+        if(prev !== fee){
+          // registra el recargo actual (auditable: cuándo y cuánto)
+          r.lateFee = fee;
+          r.lateFeeDays = feeDays;
+          r.lateFeeUpdatedAt = Date.now();
+          r.lateFeePerDay = LATE_FEE_PER_DAY;
+          try{ save(false); }catch(_){}
+        }
+        fee30.push({ r, days, fee });
+      }
+      if(days > NO_DEVOLUTION_DAYS){
+        // v61 — un mes MÁS en el taller: equipo sin devolución. El estado
+        // pasa a 'no_devolution' (visible en badges y listas) pero se
+        // guarda el original para poder revertirlo si el cliente aparece.
+        if(r.status !== 'no_devolution'){
+          if(!r.preNoDevolutionStatus) r.preNoDevolutionStatus = r.status;
+          r.status = 'no_devolution';
+          r.noDevolutionAt = Date.now();
+          try{ save(false); }catch(_){}
+        }
+        listND.push({ r, days });
+      } else if(days > STALE_LIST_DAYS){
+        list30.push({ r, days });
+      }
+    }
+    return { list30, listND, fee30 };
+  }
+
+  function staleDismiss(id, which){
+    const r = data.repairs.find(x=>x.id===id);
+    if(!r) return false;
+    r.staleDismissed = r.staleDismissed || {};
+    r.staleDismissed[which] = { at: Date.now(), days: which==='nd' ? daysSince(r.noDevolutionAt||r.createdAt) : daysSince(r.createdAt) };
+    save();
+    return true;
+  }
+
+  function staleUnDismiss(id, which){
+    const r = data.repairs.find(x=>x.id===id);
+    if(!r || !r.staleDismissed) return false;
+    delete r.staleDismissed[which];
+    save();
+    return true;
+  }
+
   return {
     DEFAULT_DEVICES, DEFAULT_PRODUCTS,
+    LATE_FEE_PER_DAY, LATE_FEE_GRACE_DAYS, STALE_LIST_DAYS, NO_DEVOLUTION_DAYS,
+    staleCompute, staleDismiss, staleUnDismiss,
     get all(){ return data; },
     get settings(){ return data.settings; },
     get repairs(){ return data.repairs; },
     get transactions(){ return data.transactions; },
+    get pendings(){ return data.pendings; },
     get backend(){ return backend; },           // 'idb' | 'local'
     storageInfo: null,                          // lo llena ensurePersistent()
     ensurePersistent,
@@ -638,7 +738,8 @@ const DB = (() => {
       const keys = [
         'taller_db_v1','taller_db_v1_vital','taller_db_v1_vital_ts','taller_db_v1_ts','taller_gh_hashes','taller_gh_dirty_repairs','taller_gh_dirty_tx',
         'taller_gh_deleted','taller_gh_deleted_tx','taller_device_id',
-        'taller_repair_draft_v1','taller_session','taller_handles','taller_bootstrap_asked'
+        'taller_repair_draft_v1','taller_session','taller_handles','taller_bootstrap_asked',
+        'taller_gh_dirty_pendings','taller_gh_deleted_pendings'
       ];
       for(const k of keys){
         try{ localStorage.removeItem(k); }catch(_){}
@@ -760,7 +861,22 @@ const DB = (() => {
         r.clientPhoto = r.clientPhotos[0] || null;
       }
       if(r.status === 'delivered' && !r.deliveredAt) r.deliveredAt = Date.now();
+      // v61 — AL ENTREGAR SE COBRA EL RECARGO: si hay lateFee acumulado por
+      // días de retraso, se suma al precio (queda registrado en lateFeeCharged
+      // para que el detalle y el Resumen lo muestren como parte del cobro).
+      if(prevStatus !== 'delivered' && r.status === 'delivered' && Number(r.lateFee||0) > 0){
+        r.price = Number(r.price||0) + Number(r.lateFee||0);
+        r.lateFeeCharged = Number(r.lateFee||0);
+        r.lateFee = 0;           // ya liquidado; el histórico queda en lateFeeCharged
+        r.lateFeeDays = r.lateFeeDays || null;
+      }
       if(prevStatus === 'delivered' && r.status !== 'delivered') r.deliveredAt = null;
+      // v61 — si sale de «sin devolución» (el cliente apareció), restaurar su
+      // estado anterior real para el flujo normal (entrega/cobro).
+      if(prevStatus === 'no_devolution' && r.status !== 'no_devolution'){
+        r.noDevolutionAt = null;
+        if(!r.deliveredAt && r.status !== 'delivered') { /* conservar estado elegido */ }
+      }
       save();
       try{ window.GitSync && window.GitSync.markDirty && window.GitSync.markDirty(id); }catch(e){}
       return r;
@@ -770,7 +886,90 @@ const DB = (() => {
       try{ window.GitSync && window.GitSync.markDeleted && window.GitSync.markDeleted(id); }catch(e){}
       save();
     },
+    // v63 — DUPLICAR REPARACIÓN: copia íntegra con NUEVO id (el contador
+    // sigue), insertada DEBAJO de la original en la lista (para que se
+    // vean juntas) y sin arrastrar campos de un solo evento (firma, recargo,
+    // entregas, fotos de firma): la copia es un trabajo nuevo pendiente por
+    // defecto. dropFields (UI) permite VACIAR además los datos que el
+    // técnico elija en el diálogo.
+    duplicateRepair(id, dropFields){
+      const r = data.repairs.find(x=>x.id===id);
+      if(!r) return null;
+      const copy = JSON.parse(JSON.stringify(r));
+      // id nuevo con el contador global (mismo formato addRepair)
+      const localSuffix = (()=>{
+        try{
+          let v = localStorage.getItem('taller_device_id');
+          if(!v){ v = Math.random().toString(36).slice(2,6).toUpperCase(); localStorage.setItem('taller_device_id', v); }
+          return v;
+        }catch(_){ return Math.random().toString(36).slice(2,6).toUpperCase(); }
+      })();
+      copy.id = 'R' + String(data.counter++).padStart(4,'0') + '-' + localSuffix;
+      copy.createdAt = Date.now();
+      copy.updatedAt = Date.now();
+      copy.status = 'pending';
+      copy.duplicatedFrom = r.id;
+      // Campos de UN evento que la copia no debe heredar:
+      copy.signaturePhoto = null;
+      copy.deliveredAt = null;
+      copy.completedAt = null;
+      copy.lateFee = 0; copy.lateFeeDays = 0; copy.lateFeeCharged = 0;
+      copy.staleDismissed = null;
+      copy.warrantyStartedAt = null;
+      // Vaciar los campos que el usuario eligió en el diálogo:
+      if(Array.isArray(dropFields) && dropFields.length){
+        for(const k of dropFields){
+          if(k === 'clientPhones'){ copy.clientPhones = []; copy.clientPhone = null; }
+          else if(k === 'clientPhotos'){ copy.clientPhotos = []; copy.clientPhoto = null; }
+          else if(k === 'devicePhotos'){ copy.devicePhotos = []; copy.devicePhoto = null; }
+          else if(k === 'parts'){ copy.parts = []; }
+          else if(k === 'acceptAudio'){ copy.acceptAudio = null; }
+          else if(k === 'naFields'){ copy.naFields = []; }
+          else if(k === 'dueDate' || k === 'warrantyDays' || k === 'price' || k === 'deposit'){ copy[k] = null; }
+          else { copy[k] = null; }
+        }
+      }
+      // Insertar DEBAJO de la original (índice + 1): juntas en la lista.
+      const idx = data.repairs.findIndex(x=>x.id===id);
+      data.repairs.splice(idx<0 ? 0 : idx+1, 0, copy);
+      save();
+      try{ window.GitSync && window.GitSync.markDirty && window.GitSync.markDirty(copy.id); }catch(e){}
+      return copy;
+    },
     findRepair(id){ return data.repairs.find(r=>r.id===id); },
+    // === v63 — Pendientes (citas/trabajos por hacer) ===
+    // Lista propia (no es una reparación): nombre, teléfono, fecha,
+    // dirección y detalles. CRUD simple + sincronización por índice.
+    addPending(p){
+      const localSuffix = (()=>{
+        try{
+          let v = localStorage.getItem('taller_device_id');
+          if(!v){ v = Math.random().toString(36).slice(2,6).toUpperCase(); localStorage.setItem('taller_device_id', v); }
+          return v;
+        }catch(_){ return Math.random().toString(36).slice(2,6).toUpperCase(); }
+      })();
+      p.id = 'P' + String(data.pendCounter++).padStart(4,'0') + '-' + localSuffix;
+      p.createdAt = Date.now();
+      p.updatedAt = Date.now();
+      data.pendings.unshift(p);
+      save();
+      try{ window.GitSync && window.GitSync.markPendingDirty && window.GitSync.markPendingDirty(p.id); }catch(e){}
+      return p;
+    },
+    updatePending(id, patch){
+      const p = data.pendings.find(x=>x.id===id);
+      if(!p) return null;
+      Object.assign(p, patch, { updatedAt: Date.now() });
+      save();
+      try{ window.GitSync && window.GitSync.markPendingDirty && window.GitSync.markPendingDirty(id); }catch(e){}
+      return p;
+    },
+    deletePending(id){
+      data.pendings = data.pendings.filter(p=>p.id!==id);
+      try{ window.GitSync && window.GitSync.markPendingDeleted && window.GitSync.markPendingDeleted(id); }catch(e){}
+      save();
+    },
+    findPending(id){ return data.pendings.find(p=>p.id===id); },
     // === Transacciones (ventas y compras) ===
     addTransaction(t){
       let id = (t && typeof t.id === 'string' && t.id) ? t.id : null;

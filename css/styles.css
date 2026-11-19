@@ -185,7 +185,6 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
   text-shadow:0 0 16px rgba(232,196,106,.45);
   font-variant-numeric:tabular-nums
 }
-.dash-counter-sub{width:100%;font-size:12px;color:var(--muted);letter-spacing:.2px}
 
 /* === Cabecera de grupo elegante (líneas) — reutilizada en formulario === */
 .date-group-header,
@@ -256,11 +255,55 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
   font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:4px 8px;border-radius:6px;
   font-weight:700;white-space:nowrap;margin-top:4px;display:inline-block
 }
-.status.pending{background:rgba(255,123,107,.15);color:#ff9b8b}
-.status.in_progress{background:rgba(232,185,74,.15);color:#e8b94a}
-.status.awaiting{background:rgba(108,160,255,.15);color:#8bb5ff}
-.status.completed{background:rgba(76,201,115,.15);color:#4cc973}
-.status.delivered{background:rgba(160,160,160,.15);color:#bbb}
+/* v57 — COLORES POR ESTADO con significado de COBRO:
+   Entregada = VERDE brillante (equipo entregado y reparación COBRADA),
+   Completada = AZUL (trabajo terminado, AÚN SIN entregar/cobrar),
+   Pendiente = coral, En proceso = ámbar (trabajando ahora),
+   Cancelada = gris. Antes Completada era verde y Entregada gris, que
+   contradecía el Resumen (la ganancia vive en las Entregadas). */
+.status.pending{background:rgba(255,123,107,.16);color:#ff9b8b;border:1px solid rgba(255,123,107,.35)}
+.status.in_progress{background:rgba(232,185,74,.16);color:#e8b94a;border:1px solid rgba(232,185,74,.35)}
+.status.awaiting{background:rgba(108,160,255,.16);color:#8bb5ff;border:1px solid rgba(108,160,255,.35)}
+.status.completed{background:rgba(108,160,255,.16);color:#8bb5ff;border:1px solid rgba(108,160,255,.35)}
+.status.delivered{background:rgba(76,201,115,.2);color:#5ee08d;border:1px solid rgba(76,201,115,.5);text-shadow:0 0 10px rgba(76,201,115,.35)}
+.status.cancelled{background:rgba(160,160,160,.14);color:#b6b6b6;border:1px solid rgba(160,160,160,.3)}
+/* v61 — «Sin devolución»: morado neutro distinto de los cobros */
+.status.no_devolution{background:rgba(178,132,255,.16);color:#c9a6ff;border:1px solid rgba(178,132,255,.4)}
+/* === v61: Secciones de estancamiento (recargo + listas >30d / sin devolución) === */
+.stale-fee-card{
+  border:1px solid rgba(232,185,74,.4);border-radius:14px;padding:12px 14px;margin:0 0 12px;
+  background:linear-gradient(135deg,rgba(232,185,74,.1),rgba(232,185,74,.03))
+}
+.stale-fee-card h3{margin:0 0 6px;font-size:15px;color:#f0cd77}
+.stale-fee-card p{margin:4px 0;font-size:13px;color:var(--muted)}
+.stale-fee-total{font-size:14px}
+.acc-card.dim{opacity:.75}
+.stale-item{
+  border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:8px 0;
+  background:var(--surface-2)
+}
+.stale-item .stale-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.stale-days{
+  font-size:12px;font-weight:700;color:#f0cd77;padding:2px 8px;border-radius:999px;
+  background:rgba(232,185,74,.12);border:1px solid rgba(232,185,74,.3);white-space:nowrap
+}
+.stale-remove{
+  margin-left:auto;font-size:11.5px;font-weight:700;cursor:pointer;
+  color:#ff9b8b;background:rgba(255,123,107,.1);border:1px solid rgba(255,123,107,.35);
+  border-radius:8px;padding:4px 10px
+}
+.stale-remove:active{transform:scale(.95)}
+.stale-item h4{margin:2px 0 8px;font-size:14.5px}
+.stale-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.stale-grid span{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.stale-fee{grid-column:1/-1;color:#f0cd77;font-weight:600}
+@media(max-width:420px){.stale-grid{grid-template-columns:1fr}}
+.stale-new-badge{
+  display:inline-block;font-size:10.5px;font-weight:800;color:#fff;background:#e05555;
+  border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle;
+  animation:stale-blink 1.4s ease-in-out infinite
+}
+@keyframes stale-blink{50%{opacity:.55}}
 
 /* Forms */
 .form-group{margin-bottom:14px}
@@ -430,19 +473,40 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
   z-index:50;padding:0;animation:fade .15s
 }
 @keyframes fade{from{opacity:0}to{opacity:1}}
+/* Modal — v57: cabecera FIJA (posición sticky dentro de la tarjeta) con el
+   botón CERRAR grande y ROJO; el contenido hace scroll por debajo y el
+   botón nunca se va de la vista. El cuerpo respira con el padding que
+   antes tenía la tarjeta, así ningún componente queda tapado: el contenido
+   EMPIEZA debajo de la cabecera. */
 .modal-card{
-  background:var(--surface);width:100%;max-width:560px;max-height:92vh;overflow-y:auto;
-  border-radius:20px 20px 0 0;padding:24px 18px;position:relative;
+  background:var(--surface);width:100%;max-width:560px;max-height:92vh;
+  border-radius:20px 20px 0 0;padding:0;position:relative;
+  display:flex;flex-direction:column;overflow:hidden;
   animation:slideUp .2s
 }
 @keyframes slideUp{from{transform:translateY(20px);opacity:0}to{transform:translateY(0);opacity:1}}
-.modal-close{
-  position:absolute;top:12px;right:12px;background:var(--surface-2);border:0;color:var(--text);
-  width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2
+.modal-head{
+  position:sticky;top:0;z-index:6;flex:0 0 auto;
+  display:flex;justify-content:flex-end;align-items:center;
+  padding:10px 14px 8px;
+  background:linear-gradient(180deg,var(--surface) 78%,transparent);
+  border-radius:20px 20px 0 0
 }
+.modal-scroll{overflow-y:auto;flex:1 1 auto;padding:6px 18px 24px;overscroll-behavior:contain}
+.modal-close{
+  position:static;background:#ff6b5e;border:0;color:#fff;
+  width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;z-index:7;flex:0 0 auto;
+  box-shadow:0 4px 18px rgba(255,107,94,.45),inset 0 1px 0 rgba(255,255,255,.25);
+  transition:transform .15s,box-shadow .15s
+}
+.modal-close .ico{width:26px;height:26px;stroke-width:1.2}
+.modal-close:active{transform:scale(.92)}
+.modal-close:hover{box-shadow:0 6px 24px rgba(255,107,94,.6),inset 0 1px 0 rgba(255,255,255,.25)}
 @media(min-width:600px){
   .modal{align-items:center;padding:20px}
   .modal-card{border-radius:20px}
+  .modal-head{border-radius:20px 20px 0 0}
 }
 
 /* Detail */
@@ -455,6 +519,10 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .detail-row .val{font-weight:500;text-align:right;max-width:65%;word-break:break-word}
 .btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
 .btn-row.three{grid-template-columns:1fr 1fr 1fr}
+/* v63 — fila de 4 botones en el detalle (Editar/Etiqueta/Duplicar/Eliminar);
+   en pantallas angostas 2×2 para que no se encojan los textos */
+.btn-row.four{grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:520px){.btn-row.four{grid-template-columns:1fr 1fr}}
 .detail-photo-strip img{cursor:zoom-in}
 
 /* Foto del cliente en detalle, más pequeña */
@@ -541,9 +609,10 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 }
 .img-viewer .iv-close{
   position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;
-  width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.1);
-  border:1px solid rgba(255,255,255,.2);color:#fff;font-size:22px;
-  cursor:pointer;display:flex;align-items:center;justify-content:center
+  width:52px;height:52px;border-radius:50%;background:#ff6b5e;
+  border:1px solid rgba(255,255,255,.35);color:#fff;font-size:26px;font-weight:700;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 18px rgba(255,107,94,.5)
 }
 .img-viewer .iv-prev,.img-viewer .iv-next{
   position:absolute;top:50%;transform:translateY(-50%);
@@ -766,17 +835,43 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .tx-stat-net.neg b{color:#ff9b8b}
 
 .tx-card{
-  display:flex;align-items:center;gap:12px;padding:12px 14px;
+  display:flex;flex-direction:column;gap:0;padding:0;
   background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  margin-bottom:8px;cursor:pointer;transition:transform .1s
+  margin-bottom:8px;cursor:pointer;transition:transform .1s;
+  overflow:hidden
 }
 .tx-card:active{transform:scale(.985)}
 .tx-card.sale{border-left:3px solid #4cc973}
 .tx-card.purchase{border-left:3px solid #ff7b6b}
+/* v61 — fila plegable: compacta, el monto y el chevron a la derecha */
+.tx-collapse-row{display:flex;align-items:center;gap:12px;padding:12px 14px}
 .tx-card .tx-info{flex:1;min-width:0}
-.tx-card .tx-info h3{margin:2px 0;font-size:15px;font-weight:700}
+.tx-card .tx-info h3{margin:0;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tx-card .tx-info p{margin:0}
-.tx-card .tx-head{display:flex;align-items:center;gap:8px}
+.tx-card .tx-head{display:flex;align-items:center;gap:8px;min-width:0}
+.tx-side{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.tx-chev{
+  width:22px;height:22px;flex:0 0 auto;position:relative;
+  transition:transform .18s ease
+}
+.tx-chev::before,.tx-chev::after{
+  content:'';position:absolute;top:50%;left:50%;width:7px;height:2px;border-radius:2px;
+  background:var(--muted);transform-origin:center
+}
+.tx-chev::before{transform:translate(-50%,-50%) rotate(45deg) translateX(-3px)}
+.tx-chev::after{transform:translate(-50%,-50%) rotate(-45deg) translateX(3px)}
+.tx-card.open .tx-chev{transform:rotate(180deg)}
+/* detalle plegado/desplegado — patrón grid 0fr→1fr: el contenido envuelto
+   en un hijo único con min-height:0 y overflow:hidden colapsa de verdad */
+.tx-details{
+  display:grid;grid-template-rows:0fr;transition:grid-template-rows .22s ease
+}
+.tx-details-inner{overflow:hidden;min-height:0;padding:0 14px}
+.tx-details-inner p{margin:0}
+.tx-card.open .tx-details{grid-template-rows:1fr}
+.tx-card.open .tx-details-inner{padding:4px 14px 12px}
+.tx-card.open .tx-details-inner p{margin:3px 0}
+.tx-card.collapsed .tx-details{grid-template-rows:0fr}
 .tx-id{font-family:'Courier New',monospace;color:var(--muted);font-size:11px}
 .tx-badge{
   display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;
@@ -1649,8 +1744,85 @@ html,body{max-width:100%;overflow-x:hidden}
 }
 .top-jump.show{opacity:1;pointer-events:auto;transform:none}
 .top-jump svg{width:22px;height:22px}
-.top-jump:active{transform:scale(.92)}
 /* === v54: Franja de firma del cliente (entrega) === */
+/* === v57: Texto de ayuda bajo el selector de estado — COLOREADO según el
+   estado (Entregada=verde cobrada, Completada=azul sin cobrar, etc.);
+   mismo lenguaje de color que el badge, para leer el cobro de un vistazo === */
+.status-help{
+  margin:8px 2px 14px;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.5;
+  border:1px solid var(--border);background:var(--surface-2);color:var(--muted)
+}
+.status-help.pending{border-color:rgba(255,123,107,.45);color:#ffb0a3;background:rgba(255,123,107,.08)}
+.status-help.in_progress{border-color:rgba(232,185,74,.45);color:#f0cd77;background:rgba(232,185,74,.08)}
+.status-help.completed{border-color:rgba(108,160,255,.5);color:#a5c8ff;background:rgba(108,160,255,.08)}
+.status-help.delivered{border-color:rgba(76,201,115,.55);color:#6fe49c;background:rgba(76,201,115,.1);text-shadow:0 0 8px rgba(76,201,115,.25)}
+.status-help.cancelled{border-color:rgba(160,160,160,.4);color:#b6b6b6;background:rgba(160,160,160,.06)}
+.status-help.no_devolution{border-color:rgba(178,132,255,.45);color:#c9a6ff;background:rgba(178,132,255,.07)}
+/* === v63: Pendientes (topbar + tarjetas) === */
+.icon-btn{position:relative}
+.pend-badge{
+  position:absolute;top:-4px;right:-5px;min-width:18px;height:18px;
+  border-radius:9px;background:#e05555;color:#fff;font-size:10.5px;font-weight:800;
+  display:flex;align-items:center;justify-content:center;padding:0 5px;
+  border:2px solid var(--bg);line-height:1;pointer-events:none
+}
+.pend-card{
+  display:flex;flex-direction:column;gap:0;
+  background:var(--surface);border:1px solid var(--border);border-left:3px solid #e8c46a;
+  border-radius:var(--radius);margin-bottom:8px;padding:10px 12px
+}
+.pend-card.done{border-left-color:#4cc973;opacity:.62}
+.pend-card.overdue{border-left-color:#e05555}
+.pend-card.done .pend-info h3{text-decoration:line-through}
+.pend-row{display:flex;align-items:center;gap:10px}
+.pend-check{
+  width:34px;height:34px;flex:0 0 auto;border-radius:50%;cursor:pointer;
+  border:2px solid #4cc973;background:rgba(76,201,115,.12);color:#7be0a0;
+  font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center
+}
+.pend-card.done .pend-check{border-color:var(--muted);color:var(--muted);background:transparent}
+.pend-check:active{transform:scale(.9)}
+.pend-info{flex:1;min-width:0}
+.pend-info h3{margin:0;font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pend-info p{margin:2px 0 0;font-size:12.5px}
+.pend-actions{display:flex;gap:6px;flex:0 0 auto}
+.pend-act{
+  width:32px;height:32px;border-radius:8px;cursor:pointer;
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  display:flex;align-items:center;justify-content:center
+}
+.pend-act svg{width:15px;height:15px}
+.pend-act.danger{border-color:rgba(255,123,107,.35);color:#ff9b8b}
+.pend-act:active{transform:scale(.92)}
+.pend-extra{margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.pend-extra p{margin:2px 0;font-size:12.5px;white-space:pre-wrap}
+/* v63 — diálogo de duplicación: lista de campos a vaciar */
+.dup-fields-list{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow-y:auto;padding-right:4px}
+.dup-field-check{
+  display:flex;align-items:center;gap:10px;cursor:pointer;
+  padding:8px 10px;border:1px solid var(--border);border-radius:10px;
+  background:var(--surface-2);font-size:13.5px
+}
+.dup-field-check:active{background:rgba(255,255,255,.05)}
+.dup-field-check input{width:18px;height:18px;flex:0 0 auto;accent-color:#e05555}
+/* === v61: Botones GRANDES de captura rápida de firma (Cámara / Galería) === */
+.sig-quick-btns{
+  display:flex;gap:10px;margin:10px 0 4px
+}
+.sig-quick{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+  padding:18px 10px;border-radius:14px;cursor:pointer;
+  background:var(--surface-2);border:1.5px solid var(--border);
+  transition:transform .12s,border-color .12s,background .12s;
+  color:var(--text);font-weight:700;font-size:14px
+}
+.sig-quick svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.sig-quick.cam{border-color:rgba(224,85,85,.45);background:rgba(224,85,85,.07)}
+.sig-quick.cam svg{color:#e05555;filter:drop-shadow(0 2px 8px rgba(224,85,85,.35))}
+.sig-quick.gal{border-color:rgba(232,196,106,.45);background:rgba(232,196,106,.07)}
+.sig-quick.gal svg{color:#e8c46a;filter:drop-shadow(0 2px 8px rgba(232,196,106,.35))}
+.sig-quick:active{transform:scale(.96)}
+.sig-quick:hover{background:rgba(255,255,255,.06)}
 .sig-shot{
   position:relative;border-radius:12px;overflow:hidden;
   border:1px dashed rgba(232,196,106,.5);

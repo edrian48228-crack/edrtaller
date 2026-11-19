@@ -115,6 +115,7 @@ const GitSync = (() => {
   let knownDirty = new Set(); // reparaciones guardadas localmente pendientes de confirmar en servidor
   let knownDeleted = new Set();
   let knownDirtyTx = new Set(); // transacciones nuevas/editadas sin confirmar en servidor
+  let knownDirtyPendings = new Set(); // v63: pendientes sin confirmar en servidor
   // Tombstones de transacciones (las transacciones viven dentro de index.json,
   // así que necesitamos recordar localmente cuáles borramos para que no
   // reaparezcan si otro dispositivo sube un index.json antiguo antes que
@@ -316,21 +317,27 @@ const GitSync = (() => {
     catch(_){ knownDirty = new Set(); }
     try{ knownDirtyTx = new Set(JSON.parse(localStorage.getItem('taller_gh_dirty_tx')||'[]')); }
     catch(_){ knownDirtyTx = new Set(); }
+    try{ knownDirtyPendings = new Set(JSON.parse(localStorage.getItem('taller_gh_dirty_pendings')||'[]')); }
+    catch(_){ knownDirtyPendings = new Set(); }
   }
   function saveHashCache(){
     try{ localStorage.setItem('taller_gh_hashes', JSON.stringify(lastHashes)); }catch(_){}
     try{ localStorage.setItem('taller_gh_dirty_repairs', JSON.stringify([...knownDirty])); }catch(_){}
     try{ localStorage.setItem('taller_gh_dirty_tx', JSON.stringify([...knownDirtyTx])); }catch(_){}
+    try{ localStorage.setItem('taller_gh_dirty_pendings', JSON.stringify([...knownDirtyPendings])); }catch(_){}
   }
   function loadDeleted(){
     try{ knownDeleted = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted')||'[]')); }
     catch(_){ knownDeleted = new Set(); }
     try{ knownDeletedTx = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted_tx')||'[]')); }
     catch(_){ knownDeletedTx = new Set(); }
+    try{ knownDeletedPendings = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted_pendings')||'[]')); }
+    catch(_){ knownDeletedPendings = new Set(); }
   }
   function saveDeleted(){
     try{ localStorage.setItem('taller_gh_deleted', JSON.stringify([...knownDeleted])); }catch(_){}
     try{ localStorage.setItem('taller_gh_deleted_tx', JSON.stringify([...knownDeletedTx])); }catch(_){}
+    try{ localStorage.setItem('taller_gh_deleted_pendings', JSON.stringify([...knownDeletedPendings])); }catch(_){}
   }
   function markDeleted(id){
     knownDeleted.add(id);
@@ -358,6 +365,22 @@ const GitSync = (() => {
     GitLog.info('local', `Transacción ${id} guardada localmente y pendiente de subir`);
     schedulePush();
   }
+  // v63 — PENDIENTES: mismos marcados (dirty = sin confirmar en servidor,
+  // deleted = tombstone) pero para la lista de pendientes, que vive en el
+  // índice junto a las transacciones.
+  function markPendingDirty(id){
+    if(!id) return;
+    knownDirtyPendings.add(id);
+    saveHashCache();
+    GitLog.info('local', `Pendiente ${id} guardado localmente y pendiente de subir`);
+    schedulePush();
+  }
+  function markPendingDeleted(id){
+    knownDeletedPendings.add(id);
+    saveDeleted();
+    GitLog.info('marca', `Pendiente ${id} pendiente de eliminar en GitHub`);
+    schedulePush();
+  }
 
   loadHashCache();
   loadDeleted();
@@ -377,7 +400,7 @@ const GitSync = (() => {
     return JSON.stringify({
       kind:'index', schema:1,
       schemaVersion: d.schemaVersion,
-      counter: d.counter, txCounter: d.txCounter,
+      counter: d.counter, txCounter: d.txCounter, pendCounter: d.pendCounter || 1,
       settings: {
         ...d.settings,
         // v53 — la contraseña y las preguntas de seguridad son del
@@ -401,6 +424,8 @@ const GitSync = (() => {
           const { phrase, shareToken, ...safe } = sh; return safe; })()
       },
       transactions: d.transactions || [],
+      // v63 — PENDIENTES: viajan en el índice (datos livianos, sin fotos)
+      pendings: d.pendings || [],
       repairIds: ids
     }, null, 2);
   }
@@ -460,8 +485,9 @@ const GitSync = (() => {
       modified,
       deleted: [...knownDeleted],
       deletedTx: [...knownDeletedTx],
+      deletedPendings: [...knownDeletedPendings],
       indexChanged,
-      total: modified.length + knownDeleted.size + knownDeletedTx.size + (indexChanged?1:0)
+      total: modified.length + knownDeleted.size + knownDeletedTx.size + knownDeletedPendings.size + (indexChanged?1:0)
     };
   }
 
@@ -735,6 +761,31 @@ const GitSync = (() => {
           if(cleared){ saveHashCache(); GitLog.info('tx-dirty', `${cleared} transacción(es) confirmada(s) en el índice`); }
         }catch(_){}
       }
+      // v63 — igual para PENDIENTES (viven en el índice): tombstones
+      // liberadas cuando el índice subido ya no las contiene, y dirty
+      // confirmadas cuando sí están.
+      if(knownDeletedPendings.size){
+        try{
+          const parsed = JSON.parse(idxTxt);
+          const remainIds = new Set((parsed.pendings||[]).map(p=>p.id));
+          let cleared = 0;
+          for(const id of [...knownDeletedPendings]){
+            if(!remainIds.has(id)){ knownDeletedPendings.delete(id); cleared++; }
+          }
+          if(cleared){ saveDeleted(); GitLog.info('pend-tomb', `${cleared} tombstone(s) de pendiente(s) liberada(s)`); }
+        }catch(_){}
+      }
+      if(knownDirtyPendings.size){
+        try{
+          const parsed = JSON.parse(idxTxt);
+          const remainIds = new Set((parsed.pendings||[]).map(p=>p.id));
+          let cleared = 0;
+          for(const id of [...knownDirtyPendings]){
+            if(remainIds.has(id)){ knownDirtyPendings.delete(id); cleared++; }
+          }
+          if(cleared){ saveHashCache(); GitLog.info('pend-dirty', `${cleared} pendiente(s) confirmado(s) en el índice`); }
+        }catch(_){}
+      }
 
       // 5) Publicar config.json para el bootstrap de otros dispositivos.
       // v48: si este dispositivo tiene conexión completa y aún NO comparte,
@@ -859,6 +910,25 @@ const GitSync = (() => {
       }
     }
     pulledTx = pulledTx.filter(t => !knownDeletedTx.has(t.id));
+    // v63 — PENDIENTES: misma fusión no destructiva que las transacciones
+    // (locales siempre conservadas; la edición más nueva por updatedAt gana;
+    // tombstones locales no reaparecen).
+    let pulledPendings = Array.isArray(idxData.pendings) ? idxData.pendings.slice() : [];
+    const remotePendMap = new Map(pulledPendings.map(p=>[p.id, p]));
+    for(const p of DB.pendings){
+      if(knownDeletedPendings.has(p.id)) continue;
+      const clash = remotePendMap.get(p.id);
+      if(!clash){
+        pulledPendings.push(p);
+        if(!knownDirtyPendings.has(p.id)) knownDirtyPendings.add(p.id);
+      } else {
+        const same = (clash.updatedAt||0) === (p.updatedAt||0);
+        if(same) continue;
+        // La versión más nueva gana (edición local o remota reciente):
+        if((p.updatedAt||0) > (clash.updatedAt||0)){ remotePendMap.set(p.id, p); pulledPendings = pulledPendings.map(x=>x.id===p.id?p:x); }
+      }
+    }
+    pulledPendings = pulledPendings.filter(p => !knownDeletedPendings.has(p.id));
     // 4) Aplicar: fusión no destructiva — las locales NUNCA se borran aquí
     //    (mismo criterio anti-pérdida que pullAll: lo local pendiente gana).
     //    Ediciones locales más nuevas que el remoto ganan (updatedAt).
@@ -890,8 +960,10 @@ const GitSync = (() => {
         schemaVersion: Math.max(idxData.schemaVersion||1, DB.all.schemaVersion||1),
         settings: { ...(idxData.settings||{}), github: localGithub, githubShared: (idxData.settings && idxData.settings.githubShared) ? idxData.settings.githubShared : localShared },
         transactions: pulledTx,
+        pendings: pulledPendings,
         counter: Math.max(idxData.counter||1, DB.all.counter||1),
         txCounter: Math.max(idxData.txCounter||1, DB.all.txCounter||1),
+        pendCounter: Math.max(idxData.pendCounter||1, DB.all.pendCounter||1),
         repairs: mergedRepairs
       });
       // Restaurar settings puramente locales que el repo no debe pisar
@@ -1042,6 +1114,24 @@ const GitSync = (() => {
         pulledTx = DB.transactions.filter(t => !knownDeletedTx.has(t.id));
       }
 
+      // --- v63: fusión de PENDIENTES (mismo criterio no destructivo) ---
+      let pulledPendings = idxData ? (idxData.pendings || []) : [];
+      {
+        const remotePendMap = new Map(pulledPendings.map(p=>[p.id, p]));
+        for(const p of DB.pendings){
+          if(knownDeletedPendings.has(p.id)) continue;
+          const clash = remotePendMap.get(p.id);
+          if(!clash){
+            pulledPendings.push(p);
+            if(!knownDirtyPendings.has(p.id)) knownDirtyPendings.add(p.id);
+          } else {
+            // idéntico en el repo → el remoto manda; distinto → gana updatedAt
+            if((clash.updatedAt||0) === (p.updatedAt||0)) continue;
+            if((p.updatedAt||0) > (clash.updatedAt||0)){ pulledPendings = pulledPendings.map(x=>x.id===p.id?p:x); }
+          }
+        }
+      }
+
       // --- Protección contra "datos eliminados que reaparecen" ---
       // Si tenemos tombstones locales (cosas borradas en este dispositivo
       // pero que el otro dispositivo aún no ha visto), las filtramos del
@@ -1058,6 +1148,11 @@ const GitSync = (() => {
         const before = pulledTx.length;
         pulledTx = pulledTx.filter(t => !knownDeletedTx.has(t.id));
         filteredOut += before - pulledTx.length;
+      }
+      if(knownDeletedPendings.size){
+        const before = pulledPendings.length;
+        pulledPendings = pulledPendings.filter(p => !knownDeletedPendings.has(p.id));
+        filteredOut += before - pulledPendings.length;
       }
       if(filteredOut > 0){
         GitLog.warn('tombstone', `Ignorando ${filteredOut} elemento(s) borrado(s) localmente que aún existen en GitHub. Se subirá su borrado.`);
@@ -1151,6 +1246,8 @@ const GitSync = (() => {
         // nuevas registradas localmente que aún no se han subido al índice.
         counter: Math.max(idxData.counter || 1, DB.all.counter || 1),
         txCounter: Math.max(idxData.txCounter || 1, DB.all.txCounter || 1),
+        pendCounter: Math.max(idxData.pendCounter || 1, DB.all.pendCounter || 1),
+        pendings: pulledPendings,
         repairs: pulledRepairs
       } : {
         schemaVersion: DB.all.schemaVersion || 1,
@@ -1159,8 +1256,10 @@ const GitSync = (() => {
         // dispositivo).
         settings: (DB.all.settings || {}),
         transactions: pulledTx,
+        pendings: pulledPendings,
         counter: DB.all.counter || 1,
         txCounter: DB.all.txCounter || 1,
+        pendCounter: DB.all.pendCounter || 1,
         repairs: pulledRepairs
       };
 
@@ -1369,6 +1468,7 @@ const GitSync = (() => {
         GitLog.info('auto-pull', `Cambios remotos detectados: ${pending.remotePendingTotal}. Descargando…`);
         toast('Bajando cambios desde la nube…');
         await pullAll();
+        try{ if(window.App && App.updatePendBadge) App.updatePendBadge(); }catch(_){}
         if(viewIsSafeToRefresh()){
           try{ if(window.App && typeof App.refresh === 'function') App.refresh(); }catch(_){}
         } else {
@@ -1439,7 +1539,7 @@ const GitSync = (() => {
     test: testConnection,
     push: pushAll, pull: pullAll, schedulePush, markDirty, markDirtyTx,
     getPendingPush, getPendingPull,
-    markDeleted, markDeletedTx,
+    markDeleted, markDeletedTx, markPendingDirty, markPendingDeleted,
     startAutoPull, stopAutoPull, autoPullNow: autoPullTick,
     // Reset total (v5):
     resetCaches, wipeRemote,
@@ -1803,6 +1903,7 @@ const Bootstrap = (() => {
       // índice y las reparaciones usamos raw.githubusercontent (público,
       // sin token) — pullReadOnly() ya lo maneja.
       await GitSync.pullReadOnly();
+      try{ if(App.updatePendBadge) App.updatePendBadge(); }catch(_){}
       try{ App.refresh(); }catch(_){}
     }catch(e){
       GitLog.warn('boot', 'Bootstrap: ' + (e.message||e));

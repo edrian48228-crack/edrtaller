@@ -178,6 +178,8 @@ const App = (() => {
     else if(v==='chooser') Views.newChooser();
     else if(v==='search') Views.search();
     else if(v==='admin') Views.admin();
+    else if(v==='pendings') Views.pendings(arg);
+    else if(v==='pendingForm') Views.pendingForm(extra);
     // La vista se re-renderiza entera (innerHTML): la tarjeta de instalación
     // debe re-insertarse en cada dashboard mientras no esté instalada.
     if(v==='dashboard'){
@@ -300,6 +302,11 @@ const App = (() => {
     });
     const sb = document.getElementById('headerSearchBtn');
     if(sb) sb.addEventListener('click', ()=> go('search'));
+    // v63 — PENDIENTES: botón junto al de buscar (topbar). Abre la lista de
+    // pendientes (citas/trabajos por hacer).
+    const pb = document.getElementById('headerPendBtn');
+    if(pb) pb.addEventListener('click', ()=> go('pendings'));
+    try{ updatePendBadge(); }catch(_){}
     // v54 — NAVEGACIÓN RÁPIDA: botón flotante "ir al final" que se convierte
     // en "volver arriba" al llegar abajo. No cambia el alto de la topbar ni
     // del contenido (flota a la derecha, sobre la app, encima del tabbar).
@@ -317,6 +324,8 @@ const App = (() => {
       showApp();
       // v41: sesión viva (app ya abierta) → asegurar almacenamiento persistente.
       try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
+      // v61 — aviso de equipos estancados también en arranque con sesión viva.
+      try{ setTimeout(()=>notifyStaleOnce(), 600); }catch(_){}
     } else {
       // v53 — El hash de fábrica (taller48228) ya viene precargado, así que
       // "Primer acceso: define tu contraseña" solo aplica si por migración
@@ -360,9 +369,38 @@ const App = (() => {
       // v41: pedir almacenamiento persistente tras entrar (IndexedDB ya no
       // aparece en "liberar espacio" de Android y refresca el diagnóstico).
       try{ if(DB.ensurePersistent) DB.ensurePersistent(); }catch(_){}
+      // v61 — AVISO AL ENTRAR: equipos nuevos en las listas de estancamiento
+      // (>30 días / sin devolución) o con recargo activo que no se habían
+      // notificado antes. Se recuerda lo ya visto en localStorage para no
+      // repetir el toast en cada entrada.
+      try{ notifyStaleOnce(); }catch(_){}
     } else {
       err.classList.remove('hidden');
     }
+  }
+
+  // v61 — Notificación de equipos estancados NUEVOS (una vez por equipo).
+  // Compara los IDs actuales de las listas con los ya notificados.
+  function notifyStaleOnce(){
+    if(typeof DB === 'undefined' || !DB.staleCompute) return;
+    const st = DB.staleCompute();
+    const cur = new Set([
+      ...st.list30.filter(x=>!(x.r.staleDismissed&&x.r.staleDismissed.s30)).map(x=>x.r.id),
+      ...st.listND.filter(x=>!(x.r.staleDismissed&&x.r.staleDismissed.nd)).map(x=>x.r.id)
+    ]);
+    let seen = [];
+    try{ seen = JSON.parse(localStorage.getItem('taller_stale_seen') || '[]'); }catch(_){}
+    const seenSet = new Set(seen);
+    const fresh = [...cur].filter(id=>!seenSet.has(id));
+    if(fresh.length){
+      const ndNew = st.listND.filter(x=>!(x.r.staleDismissed&&x.r.staleDismissed.nd)).filter(x=>fresh.includes(x.r.id)).length;
+      const s30New = fresh.length - ndNew;
+      const parts = [];
+      if(s30New>0) parts.push(`${s30New} equipo(s) llevan más de 30 días sin entregarse`);
+      if(ndNew>0) parts.push(`${ndNew} equipo(s) pasaron a «sin devolución»`);
+      UI.toast('⏱ ' + parts.join(' y ') + ' · míralos en Resumen', 5200);
+    }
+    try{ localStorage.setItem('taller_stale_seen', JSON.stringify([...cur])); }catch(_){}
   }
   function openForgotFlow(){
     const qs = Auth.getQuestions();
@@ -409,7 +447,18 @@ const App = (() => {
       });
     });
   }
-  return { init, go, refresh, applyBrand, getPresets, Splash,
+  // v63 — badge de pendientes en la topbar: número de pendientes activos
+  // (los hechos no cuentan). Se llama al entrar, al cambiar la lista y tras
+  // cada pull que traiga pendings nuevos.
+  function updatePendBadge(){
+    const el = document.getElementById('pendBadge');
+    if(!el) return;
+    let n = 0;
+    try{ n = (DB.pendings||[]).filter(p=>!p.done).length; }catch(_){}
+    if(n>0){ el.hidden = false; el.textContent = n>99?'99+':String(n); }
+    else { el.hidden = true; el.textContent = ''; }
+  }
+  return { init, go, refresh, applyBrand, getPresets, Splash, updatePendBadge,
     // v53 — migrateInitial (IndexedDB) terminó DESPUÉS del init(): los datos
     // reales del disco ya están en RAM. Si el estado de login cambió con
     // ellos (p. ej. requirePassword=false guardado solo en IDB), corregir
