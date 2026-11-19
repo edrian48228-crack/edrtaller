@@ -1,0 +1,39 @@
+{
+  "kind": "repair",
+  "schema": 1,
+  "repair": {
+    "clientName": "Elbis Megret",
+    "clientAddress": "4 oeste % 17 y 19 norte Palmira",
+    "clientIdNumber": null,
+    "device": "Teléfono móvil",
+    "brand": "Redmi",
+    "model": "011",
+    "serial": null,
+    "issue": "Puerto de carga .cambio ",
+    "status": "completed",
+    "notes": null,
+    "clientPhones": [
+      "54069456"
+    ],
+    "clientPhone": "54069456",
+    "dueDate": null,
+    "createdAt": 1794931912823,
+    "price": 3000,
+    "deposit": null,
+    "warrantyDays": 7,
+    "devicePhotos": [],
+    "devicePhoto": null,
+    "clientPhoto": null,
+    "acceptAudio": null,
+    "naFields": [
+      "clientIdNumber",
+      "serial",
+      "deposit"
+    ],
+    "parts": [],
+    "id": "R0006-K1B8",
+    "updatedAt": 1794931912823,
+    "deliveredAt": null,
+    "clientPhotos": []
+  }
+}
