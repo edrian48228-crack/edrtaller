@@ -1,7 +1,6 @@
 {
   "kind": "repair",
   "schema": 1,
-  "savedAt": 1783684004274,
   "repair": {
     "clientName": "Varo El Policia",
     "clientAddress": "A lado del circulo donde trabaja adislen",
@@ -11,7 +10,7 @@
     "model": "MRD-LX3",
     "serial": null,
     "issue": "Bloqueado por FRP",
-    "status": "pending",
+    "status": "no_devolution",
     "notes": "Movil en estado regular",
     "clientPhones": [
       "59973370"
@@ -39,6 +38,9 @@
     "createdAt": 1781195756026,
     "updatedAt": 1781224178834,
     "deliveredAt": null,
-    "parts": []
+    "parts": [],
+    "clientPhotos": [],
+    "preNoDevolutionStatus": "pending",
+    "noDevolutionAt": 1795109208307
   }
 }
