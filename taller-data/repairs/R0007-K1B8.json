@@ -10,7 +10,7 @@
     "model": null,
     "serial": null,
     "issue": "Recontruccion de venas ",
-    "status": "completed",
+    "status": "delivered",
     "notes": null,
     "clientPhones": [
       "51359871"
@@ -37,8 +37,8 @@
     ],
     "parts": [],
     "id": "R0007-K1B8",
-    "updatedAt": 1795002055366,
-    "deliveredAt": null,
+    "updatedAt": 1795221345719,
+    "deliveredAt": 1795221345719,
     "clientPhotos": []
   }
 }
