@@ -156,6 +156,17 @@ const App = (() => {
     setTimeout(()=>{ if(window.Views && Views.autoAuditOnLoad) Views.autoAuditOnLoad(); }, 600);
     // Iniciar sincronización automática (descarga) desde GitHub
     try{ if(window.GitSync && GitSync.startAutoPull) GitSync.startAutoPull(); }catch(_){}
+    // v64 — MOTOR DE NOTIFICACIONES: al entrar, pedir permiso (una vez) y
+    // disparar el escaneo de equipos pendientes / >30 días / sin devolución.
+    // notify.js es defer: se reintenta un par de veces si aún no cargó.
+    setTimeout(()=>{
+      if(!window.Notify) return;
+      try{
+        Notify.askPermission().then(()=>{
+          Notify.fire();
+        }).catch(()=>{ try{ Notify.fire({ system:false }); }catch(_){} });
+      }catch(_){}
+    }, 1200);
     // Bootstrap v5: si este dispositivo NO tiene configuración propia y el
     // taller publicó config.json (GitHub Pages), preguntar una única vez
     // si desea conectarse y descargar todo sin teclear nada.
@@ -180,6 +191,7 @@ const App = (() => {
     else if(v==='admin') Views.admin();
     else if(v==='pendings') Views.pendings(arg);
     else if(v==='pendingForm') Views.pendingForm(extra);
+    else if(v==='supplierForm') Views.supplierForm(extra); // v66 — proveedores de piezas
     // La vista se re-renderiza entera (innerHTML): la tarjeta de instalación
     // debe re-insertarse en cada dashboard mientras no esté instalada.
     if(v==='dashboard'){

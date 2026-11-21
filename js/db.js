@@ -74,6 +74,11 @@ const DB = (() => {
     // del índice de GitHub (son datos livianos, sin fotos).
     pendings: [],
     pendCounter: 1,
+    // v66 — PROVEEDORES DE PIEZAS: contactos completos (nombre, empresa,
+    // varios teléfonos, WhatsApp, email, dirección, notas, piezas que vende).
+    // Datos livianos → viajan en el índice de sync igual que los pendientes.
+    suppliers: [],
+    supplierCounter: 1,
     counter: 1,
     txCounter: 1
   };
@@ -525,6 +530,27 @@ const DB = (() => {
       for(const p of data.pendings){ const m = /^P(\d+)/.exec(p.id||''); if(m) maxN = Math.max(maxN, +m[1]); }
       data.pendCounter = maxN + 1; changed = true;
     }
+    // v66 — PENDIENTES MULTI-TelÉFONO: phone (string único) pasa a phones[]
+    // (alias de compatibilidad: phone sigue siendo phones[0]).
+    for(const p of data.pendings){
+      if(!Array.isArray(p.phones)){
+        p.phones = p.phone ? [p.phone] : [];
+        changed = true;
+      }
+    }
+    // v66 — PROVEEDORES: migración y contador (mismo patrón que pendings)
+    if(!Array.isArray(data.suppliers)){ data.suppliers = []; changed = true; }
+    if(!data.supplierCounter || data.supplierCounter < 1){
+      let maxN = 0;
+      for(const s of data.suppliers){ const m = /^PR(\d+)/.exec(s.id||''); if(m) maxN = Math.max(maxN, +m[1]); }
+      data.supplierCounter = maxN + 1; changed = true;
+    }
+    for(const s of data.suppliers){
+      if(!Array.isArray(s.phones)){ s.phones = s.phone ? [s.phone] : []; changed = true; }
+      if(!Array.isArray(s.parts)){ s.parts = []; changed = true; }
+      // v66 — alias phone = phones[0] (consistencia para vistas viejas)
+      if(s.phone !== (s.phones[0] || null)){ s.phone = s.phones[0] || null; changed = true; }
+    }
     if(!data.settings.productMinStock || typeof data.settings.productMinStock!=='object'){
       data.settings.productMinStock = {}; changed = true;
     }
@@ -620,7 +646,13 @@ const DB = (() => {
     const listND = [];
     const fee30 = [];   // con recargo activo (para el aviso del Resumen)
     for(const r of data.repairs){
-      if(r.status === 'delivered' || r.status === 'cancelled') continue;
+      // v66 — REGLA DEL TALLER (super-importante): los equipos que pasan a
+      // «más de 30 días en el taller» y a «sin devolución» son SOLO los que
+      // están en estado COMPLETADO (terminado y listo, sin recoger). Las
+      // pendientes/en proceso se están trabajando; entregadas/canceladas
+      // ya salieron. Un equipo marcado no_devolution (nacido de completado)
+      // se mantiene en su lista.
+      if(r.status !== 'completed' && r.status !== 'no_devolution') continue;
       const baseTs = r.status === 'completed' ? (r.completedAt || r.updatedAt || r.createdAt) : (r.createdAt || r.updatedAt);
       const days = daysSince(baseTs);
       // Recargo: SOLO en Completada (terminada y lista, sin recoger). Las
@@ -657,6 +689,27 @@ const DB = (() => {
     return { list30, listND, fee30 };
   }
 
+  // v65 — al ENTREGAR un equipo (desde cualquier ruta: firma, entrega
+  // normal o cambio manual) se limpia todo rastro de demora: si estaba en
+  // «sin devolución» se revierte a su estado original + delivered, y el
+  // recargo acumulado no cobrado se congela a 0 (el equipo ya salió).
+  function markDeliveredCleanup(r){
+    if(!r) return;
+    // revertir no_devolution al estado que tenía antes de caer ahí
+    if(r.status === 'no_devolution' || r.preNoDevolutionStatus){
+      r.preNoDevolutionStatus = null;
+      r.noDevolutionAt = null;
+    }
+    if(r.status !== 'delivered'){ r.status = 'delivered'; }
+    r.staleDismissed = null;
+    // el recargo ya cobrado se conserva (histórico de caja); el activo se
+    // congela a 0 porque el equipo ya no está en el taller:
+    r.lateFee = 0;
+    r.lateFeeDays = 0;
+    r.lateFeeUpdatedAt = Date.now();
+    try{ save(false); }catch(_){}
+  }
+
   function staleDismiss(id, which){
     const r = data.repairs.find(x=>x.id===id);
     if(!r) return false;
@@ -683,6 +736,7 @@ const DB = (() => {
     get repairs(){ return data.repairs; },
     get transactions(){ return data.transactions; },
     get pendings(){ return data.pendings; },
+    get suppliers(){ return data.suppliers; },
     get backend(){ return backend; },           // 'idb' | 'local'
     storageInfo: null,                          // lo llena ensurePersistent()
     ensurePersistent,
@@ -830,7 +884,9 @@ const DB = (() => {
         }catch(_){ return Math.random().toString(36).slice(2,6).toUpperCase(); }
       })();
       r.id = 'R' + String(data.counter++).padStart(4,'0') + '-' + localSuffix;
-      r.createdAt = Date.now();
+      // v64 — respetar un createdAt EXPLICITO si llega (tests / importación
+      // de datos): sin esto, siempre nacía «hoy» aunque se indicara otra fecha.
+      r.createdAt = (typeof r.createdAt === 'number' && r.createdAt > 0) ? r.createdAt : Date.now();
       r.updatedAt = Date.now();
       // v56 — normalizar multi-foto del cliente al registrar (el alias
       // clientPhoto siempre refleja clientPhotos[0]).
@@ -870,6 +926,14 @@ const DB = (() => {
         r.lateFee = 0;           // ya liquidado; el histórico queda en lateFeeCharged
         r.lateFeeDays = r.lateFeeDays || null;
       }
+      // v65 — ENTREGA = FIN DE LA DEMORA: al pasar a entregada se limpian
+      // todas las marcas de «>30 días» / «sin devolución» (la regla del
+      // taller: esas listas son SOLO para equipos NO entregados).
+      if(prevStatus !== 'delivered' && r.status === 'delivered'){
+        r.staleDismissed = null;
+        r.preNoDevolutionStatus = null;
+        r.noDevolutionAt = null;
+      }
       if(prevStatus === 'delivered' && r.status !== 'delivered') r.deliveredAt = null;
       // v61 — si sale de «sin devolución» (el cliente apareció), restaurar su
       // estado anterior real para el flujo normal (entrega/cobro).
@@ -882,9 +946,20 @@ const DB = (() => {
       return r;
     },
     deleteRepair(id){
+      // v64 — PROTECCIÓN DEL ID NUEVO DE UNA COPIA: una reparación nacida
+      // de «Duplicar» guarda duplicatedFrom. Su ID (el nuevo que generó la
+      // copia) NO se puede eliminar — el técnico puede borrar la original
+      // o los datos de la copia, pero este registro queda trazable.
+      // (devuelve false = bloqueado, true = eliminada.)
+      const rec = data.repairs.find(r=>r.id===id);
+      if(rec && rec.duplicatedFrom){
+        console.warn('[DB] El ID de una copia duplicada ('+id+') no se puede eliminar.');
+        return false;
+      }
       data.repairs = data.repairs.filter(r=>r.id!==id);
       try{ window.GitSync && window.GitSync.markDeleted && window.GitSync.markDeleted(id); }catch(e){}
       save();
+      return true;
     },
     // v63 — DUPLICAR REPARACIÓN: copia íntegra con NUEVO id (el contador
     // sigue), insertada DEBAJO de la original en la lista (para que se
@@ -951,6 +1026,10 @@ const DB = (() => {
       p.id = 'P' + String(data.pendCounter++).padStart(4,'0') + '-' + localSuffix;
       p.createdAt = Date.now();
       p.updatedAt = Date.now();
+      // v66 — normaliza multi-teléfono (phones[] manda; phone = alias[0])
+      if(!Array.isArray(p.phones)) p.phones = p.phone ? [p.phone] : [];
+      if(!p.phones.length && p.phone) p.phones = [p.phone];
+      p.phone = p.phones[0] || null;
       data.pendings.unshift(p);
       save();
       try{ window.GitSync && window.GitSync.markPendingDirty && window.GitSync.markPendingDirty(p.id); }catch(e){}
@@ -960,6 +1039,8 @@ const DB = (() => {
       const p = data.pendings.find(x=>x.id===id);
       if(!p) return null;
       Object.assign(p, patch, { updatedAt: Date.now() });
+      // v66 — mantiene el alias phone → phones[0]
+      if(Array.isArray(p.phones)) p.phone = p.phones[0] || null;
       save();
       try{ window.GitSync && window.GitSync.markPendingDirty && window.GitSync.markPendingDirty(id); }catch(e){}
       return p;
@@ -970,6 +1051,58 @@ const DB = (() => {
       save();
     },
     findPending(id){ return data.pendings.find(p=>p.id===id); },
+    // === v66 — Proveedores de piezas ===
+    // CRUD completo + búsqueda. Los proveedores son datos livianos que
+    // viajan en el índice de sincronización (igual que los pendientes).
+    addSupplier(s){
+      const localSuffix = (()=>{
+        try{
+          let v = localStorage.getItem('taller_device_id');
+          if(!v){ v = Math.random().toString(36).slice(2,6).toUpperCase(); localStorage.setItem('taller_device_id', v); }
+          return v;
+        }catch(_){ return Math.random().toString(36).slice(2,6).toUpperCase(); }
+      })();
+      s.id = 'PR' + String(data.supplierCounter++).padStart(4,'0') + '-' + localSuffix;
+      s.createdAt = Date.now();
+      s.updatedAt = Date.now();
+      if(!Array.isArray(s.phones)) s.phones = [];
+      if(!Array.isArray(s.parts)) s.parts = [];
+      data.suppliers.unshift(s);
+      save();
+      try{ window.GitSync && window.GitSync.markSupplierDirty && window.GitSync.markSupplierDirty(s.id); }catch(e){}
+      return s;
+    },
+    updateSupplier(id, patch){
+      const s = data.suppliers.find(x=>x.id===id);
+      if(!s) return null;
+      Object.assign(s, patch, { updatedAt: Date.now() });
+      if(!Array.isArray(s.phones)) s.phones = [];
+      if(!Array.isArray(s.parts)) s.parts = [];
+      save();
+      try{ window.GitSync && window.GitSync.markSupplierDirty && window.GitSync.markSupplierDirty(id); }catch(e){}
+      return s;
+    },
+    deleteSupplier(id){
+      data.suppliers = data.suppliers.filter(s=>s.id!==id);
+      try{ window.GitSync && window.GitSync.markSupplierDeleted && window.GitSync.markSupplierDeleted(id); }catch(e){}
+      save();
+    },
+    findSupplier(id){ return data.suppliers.find(s=>s.id===id); },
+    searchSuppliers(q){
+      const term = String(q||'').trim().toLowerCase();
+      if(!term) return data.suppliers.slice();
+      const norm = v => String(v||'').toLowerCase();
+      return data.suppliers.filter(s=>{
+        const hay = [
+          s.name, s.company, s.email, s.address, s.notes,
+          (s.phones||[]).join(' '),
+          (s.parts||[]).join(' ')
+        ].map(norm).join(' ');
+        // tildes no bloquean la búsqueda:
+        return hay.normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(
+          term.normalize('NFD').replace(/[\u0300-\u036f]/g,''));
+      });
+    },
     // === Transacciones (ventas y compras) ===
     addTransaction(t){
       let id = (t && typeof t.id === 'string' && t.id) ? t.id : null;
@@ -1119,6 +1252,8 @@ const DB = (() => {
       return {
         repairs: (data.repairs||[]).length,
         transactions: (data.transactions||[]).length,
+        pendings: (data.pendings||[]).length,
+        suppliers: (data.suppliers||[]).length,
         fotos, audios,
         settings: !!(data.settings),
         bytes: JSON.stringify(data).length
@@ -1178,6 +1313,42 @@ const DB = (() => {
             txIds.add(t.id);
             added.transactions++;
           }
+        }
+        // v66 — PROVEEDORES: fusionar sin duplicar por id (los de este
+        // dispositivo nunca se borran; los nuevos del archivo se añaden).
+        if(Array.isArray(p.suppliers)){
+          const supIds = new Set((data.suppliers||[]).map(s=>s.id));
+          for(const s of p.suppliers){
+            if(s && s.id && !supIds.has(s.id)){
+              if(!Array.isArray(s.phones)) s.phones = s.phone ? [s.phone] : [];
+              if(!Array.isArray(s.parts)) s.parts = [];
+              data.suppliers.push(s);
+              supIds.add(s.id);
+            }
+          }
+          const maxSup = data.suppliers.reduce((m,s)=>{
+            const mm = /^PR(\d+)/i.exec(String(s.id||''));
+            const n = mm ? parseInt(mm[1],10) : NaN;
+            return isFinite(n)&&n>m ? n : m;
+          }, 0);
+          if(maxSup+1 > (data.supplierCounter||1)) data.supplierCounter = maxSup+1;
+        }
+        // v66 — PENDIENTES también en mergeJson (antes solo replaceAll):
+        if(Array.isArray(p.pendings)){
+          const pendIds = new Set((data.pendings||[]).map(x=>x.id));
+          for(const x of p.pendings){
+            if(x && x.id && !pendIds.has(x.id)){
+              if(!Array.isArray(x.phones)) x.phones = x.phone ? [x.phone] : [];
+              data.pendings.push(x);
+              pendIds.add(x.id);
+            }
+          }
+          const maxPend = data.pendings.reduce((m,x)=>{
+            const mm = /^P(\d+)/.exec(String(x.id||''));
+            const n = mm ? parseInt(mm[1],10) : NaN;
+            return isFinite(n)&&n>m ? n : m;
+          }, 0);
+          if(maxPend+1 > (data.pendCounter||1)) data.pendCounter = maxPend+1;
         }
         // Ajustar contadores para no chocar con ids existentes
         const maxRep = data.repairs.reduce((m,r)=>{

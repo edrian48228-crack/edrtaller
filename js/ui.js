@@ -373,7 +373,9 @@ const UI = (() => {
     return {
       async start(onTick){
         // v61 — CALIDAD DE GRABACIÓN mejorada:
-        // · Opus a 192 kbps (transparente para voz; antes 128 kbps).
+        // · Opus a 64 kbps mono (voz transparente — especificación Opus:
+        //   64 kb/s mono = "high quality speech"; v66 baja de 192 para que
+        //   el JSON/respaldo pese ~3× menos sin pérdida audible).
         // · SIN autoGainControl: aplasta la dinámica de la voz y hace
         //   "bombeo" (sube/baja el volumen constantemente).
         // · echoCancellation solo si se habla cerca del micrófono del propio
@@ -392,7 +394,12 @@ const UI = (() => {
         });
         chunks = [];
         const mime = pickAudioMime();
-        const opts = { audioBitsPerSecond: 192000 };
+        // v66 — AUDIO OPTIMIZADO: 64 kbps mono en Opus/AAC (voz transparente
+        // según la especificación de Opus: 64 kb/s mono es calidad "high"
+        // para señal de voz; para notas de taller es indistinguible de 192).
+        // Beneficio: ~3× menos bytes → JSON de respaldo, IndexedDB y GitHub
+        // viajan mucho más ligeros (1 minuto ≈ 480 KB base64 vs ~1.5 MB).
+        const opts = { audioBitsPerSecond: 64000 };
         if(mime) opts.mimeType = mime;
         try{
           mediaRec = new MediaRecorder(stream, opts);

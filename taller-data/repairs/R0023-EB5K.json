@@ -1,6 +1,7 @@
 {
   "kind": "repair",
   "schema": 1,
+  "savedAt": 1783529004399,
   "repair": {
     "clientName": "Pp",
     "clientAddress": null,
@@ -10,7 +11,7 @@
     "model": null,
     "serial": null,
     "issue": "",
-    "status": "no_devolution",
+    "status": "pending",
     "notes": null,
     "clientPhones": [],
     "clientPhone": null,
@@ -27,9 +28,6 @@
     "parts": [],
     "id": "R0023-EB5K",
     "updatedAt": 1781956883108,
-    "deliveredAt": null,
-    "clientPhotos": [],
-    "preNoDevolutionStatus": "pending",
-    "noDevolutionAt": 1795109208549
+    "deliveredAt": null
   }
 }

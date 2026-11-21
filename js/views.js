@@ -15,6 +15,7 @@ const Views = (() => {
     mic: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>',
     stop: '<svg viewBox="0 0 24 24" class="ico"><path d="M6 6h12v12H6z"/></svg>',
     plus: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>',
+    bell: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 22a2.2 2.2 0 0 0 2.2-2.2H9.8A2.2 2.2 0 0 0 12 22zm7-6v-5a7 7 0 0 0-5.5-6.8V3a1.5 1.5 0 0 0-3 0v1.2A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2z"/></svg>',
     cloud: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 18H6a4 4 0 0 1-.5-7.97A6 6 0 0 1 17 9a4 4 0 0 1 2 9z"/></svg>',
     save: '<svg viewBox="0 0 24 24" class="ico"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7l-4-4zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6zm3-10H5V5h10v4z"/></svg>',
     phone: '<svg viewBox="0 0 24 24" class="ico"><path d="M6.6 10.8a15 15 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.58 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1 11.4 11.4 0 0 0 .58 3.6 1 1 0 0 1-.25 1l-2.23 2.2z"/></svg>',
@@ -74,9 +75,13 @@ const Views = (() => {
         </div>`;
       }
     }
+    // v64 — botón DUPLICAR en cada tarjeta de la lista: duplicar
+    // CUALQUIER reparación directamente desde ahí (mismo flujo con
+    // confirmación + selección de datos a vaciar que el detalle).
+    const dupBtn = `<button class="mini-action dup" data-dup-id="${escape(r.id)}" data-stop="1" title="Duplicar reparación" aria-label="Duplicar">${ICONS.plus}</button>`;
     const delBtn = `<button class="mini-action delete" data-del-id="${escape(r.id)}" data-stop="1" title="Eliminar reparación" aria-label="Eliminar">${ICONS.trash}</button>`;
     const inner = phoneHtml ? phoneHtml.replace(/^<div class="card-phones">/,'').replace(/<\/div>\s*$/,'') : '';
-    const actionsRow = `<div class="card-phones bottom-row">${inner}${delBtn}</div>`;
+    const actionsRow = `<div class="card-phones bottom-row">${inner}${dupBtn}${delBtn}</div>`;
     return `
       <div class="repair-card" data-id="${r.id}">
         <div class="thumb">${thumb}</div>
@@ -102,11 +107,23 @@ const Views = (() => {
         openPhonePicker(b.dataset.pickPhone);
       });
     });
+    // v64 — duplicar CUALQUIER reparación desde su tarjeta de la lista
+    view().querySelectorAll('[data-dup-id]').forEach(b=>{
+      b.addEventListener('click', e=>{
+        e.preventDefault(); e.stopPropagation();
+        duplicateRepairDialog(b.dataset.dupId);
+      });
+    });
     view().querySelectorAll('[data-del-id]').forEach(b=>{
       b.addEventListener('click', async e=>{
         e.preventDefault(); e.stopPropagation();
         const id = b.dataset.delId;
         const r = DB.findRepair(id);
+        // v64 — el ID de una copia duplicada no se puede eliminar
+        if(r && r.duplicatedFrom){
+          UI.toast('🔒 El ID '+id+' es una copia generada por duplicación y no se puede eliminar. Puedes vaciar sus datos editándola.');
+          return;
+        }
         const ok = await UI.confirmDialog({
           title:'Eliminar reparación',
           message:`¿Eliminar definitivamente la reparación ${id}${r&&r.clientName?' de '+r.clientName:''}? Esta acción no se puede deshacer.`,
@@ -218,6 +235,21 @@ const Views = (() => {
           <div class="row-between"><div>
             <h3>⏱ Equipos demorados en el taller</h3>
             <p>${staleFeeN>0?`<b>${staleFeeN}</b> con recargo acumulándose ($ 100/día tras 15 días en Completada). `:''}${stale30>0?`<b>${stale30}</b> llevan <b>más de 30 días</b> sin entregarse. `:''}${staleND>0?`<b>${staleND}</b> pasaron a <b>sin devolución</b> (60 días). `:''}Ábrelos en <b>Resumen</b> para ver todos los datos.</p>
+            <div class="notify-actions" style="margin-top:10px">
+              <button type="button" class="btn-secondary btn-inline" id="dashNotifBtn" title="Notificación del sistema">${ICONS.bell} Avisarme (notificación)</button>
+              <button type="button" class="btn-secondary btn-inline" id="dashWaBtn" title="Mensaje por WhatsApp">${ICONS.wa} Avisar por WhatsApp</button>
+            </div>
+          </div>${ICONS.clock}</div>
+        </div>` : ''}
+      ${(pending+inProgress+completed)>0 ? `
+        <div class="admin-card" style="border-left:3px solid #e8c46a;background:linear-gradient(90deg,rgba(232,196,106,.08),var(--surface))">
+          <div class="row-between"><div>
+            <h3>🔔 Equipos pendientes en el taller</h3>
+            <p>Tienes <b>${pending+inProgress+completed}</b> equipo(s) pendientes de entrega: <b>${pending}</b> sin empezar, <b>${inProgress}</b> en proceso y <b>${completed}</b> listos para entregar.</p>
+            <div class="notify-actions" style="margin-top:10px">
+              <button type="button" class="btn-secondary btn-inline" data-notif-pend title="Notificación del sistema">${ICONS.bell} Avisarme (notificación)</button>
+              <button type="button" class="btn-secondary btn-inline" data-wa-pend title="Mensaje por WhatsApp">${ICONS.wa} Avisar por WhatsApp</button>
+            </div>
           </div>${ICONS.clock}</div>
         </div>` : ''}
       ${window.__v57_movedCompleted ? `
@@ -240,6 +272,9 @@ const Views = (() => {
         <div class="stat-card success" data-go="repairs:completed" title="Listas para entregar">${ICONS.check}<div class="stat-num">${completed}</div><div class="stat-lbl">Completadas</div></div>
         <div class="stat-card delivered" data-go="repairs:delivered" title="Entregadas al cliente">${ICONS.box}<div class="stat-num">${delivered}</div><div class="stat-lbl">Entregadas</div></div>
         <div class="stat-card cancelled" data-go="repairs:cancelled" title="Reparaciones canceladas">${ICONS.cancel}<div class="stat-num">${cancelled}</div><div class="stat-lbl">Canceladas</div></div>
+        ${noDev>0 || stale30>0 ? `
+        <div class="stat-card cancelled" data-go="summary" title="Equipos completados más de 30 días sin recoger (ver Resumen)">${ICONS.clock}<div class="stat-num">${stale30}</div><div class="stat-lbl">+30 días taller</div></div>
+        <div class="stat-card cancelled" data-go="summary" title="Equipos completados sin devolución por el cliente (ver Resumen)">${ICONS.box}<div class="stat-num">${noDev}</div><div class="stat-lbl">Sin devolución</div></div>` : ''}
       </div>
       ${sectionDivider('Recientes', recent.length||0)}
       ${sortSelectHtml('dashSort', sortKey)}
@@ -252,6 +287,47 @@ const Views = (() => {
     });
     const ds = document.getElementById('dashSort');
     if(ds) ds.addEventListener('change', e=>{ Views._dashSort = e.target.value; dashboard(); });
+    // v64 — botones de notificación (sistema y WhatsApp) del panel demorado:
+    const dn = document.getElementById('dashNotifBtn');
+    if(dn) dn.onclick = async ()=>{
+      if(!window.Notify){ UI.toast('Módulo de notificaciones no cargado'); return; }
+      const p = await Notify.askPermission();
+      if(p !== 'granted'){ UI.toast('Permiso de notificaciones denegado. Actívalo en el navegador.'); return; }
+      // El aviso manual de demorados resume los tres casos:
+      const t = [];
+      if(staleFeeN>0) t.push(`${staleFeeN} con recargo`);
+      if(stale30>0) t.push(`${stale30} >30 días`);
+      if(staleND>0) t.push(`${staleND} sin devolución`);
+      Notify.systemNotify('Equipos demorados en el taller', t.join(' · ') + '. Ábrelos en el Resumen.', 'taller-stale');
+      UI.toast('🔔 Notificación enviada');
+    };
+    const dw = document.getElementById('dashWaBtn');
+    if(dw) dw.onclick = ()=>{
+      // WhatsApp al primer equipo demorado con teléfono (elige el más grave:
+      // sin devolución; luego >30 días).
+      const pick = (staleNow.listND.find(x=>!dismissed(x,'nd'))) || (staleNow.list30.find(x=>!dismissed(x,'s30')));
+      if(!pick){ UI.toast('No hay equipos demorados con teléfono'); return; }
+      Notify.notifyWa(pick, pick.r.status==='no_devolution' ? 'nodev' : 'd30');
+    };
+    const dismissed = (x,w)=> !!(x.r.staleDismissed && x.r.staleDismissed[w]);
+    // v64 — panel de EQUIPOS PENDIENTES: notificación de sistema y mensaje:
+    const npBtn = view().querySelector('[data-notif-pend]');
+    if(npBtn) npBtn.onclick = async ()=>{
+      if(!window.Notify){ UI.toast('Módulo de notificaciones no cargado'); return; }
+      const p = await Notify.askPermission();
+      if(p !== 'granted'){ UI.toast('Permiso de notificaciones denegado. Actívalo en el navegador.'); return; }
+      Notify.systemNotify('Equipos pendientes', `${pending+inProgress+completed} equipo(s) por entregar: ${pending} sin empezar, ${inProgress} en proceso, ${completed} listos.`, 'taller-pend');
+      UI.toast('🔔 Notificación enviada');
+    };
+    const wpBtn = view().querySelector('[data-wa-pend]');
+    if(wpBtn) wpBtn.onclick = ()=>{
+      // WhatsApp al pendiente más antiguo con teléfono:
+      const cands = DB.repairs.filter(r=>['pending','in_progress','completed'].includes(r.status))
+        .sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
+      const pick = cands.find(r=>(r.clientPhones||[]).filter(Boolean).length || r.clientPhone);
+      if(!pick){ UI.toast('Ningún pendiente tiene teléfono guardado'); return; }
+      Notify.notifyWa({ r: pick, days: Math.floor((Date.now()-(pick.createdAt||Date.now()))/86400000) }, 'pending');
+    };
     bindRepairCards();
   }
 
@@ -273,6 +349,24 @@ const Views = (() => {
     const opts = FILTERS.map(f=>`<option value="${f.k}" ${f.k===active?'selected':''}>${f.label}</option>`).join('');
 
     const totalAll = DB.repairs.length;
+    // v65 — filtro «Entregadas»: banda con el DINERO COBRADO entre todas
+    // las reparaciones entregadas (encima de la lista, como pide el taller):
+    // suma el precio de cada entregada + los recargos ya cobrados.
+    let deliveredBanner = '';
+    if(active === 'delivered'){
+      const allDelivered = DB.repairs.filter(r=>r.status==='delivered');
+      const money = allDelivered.reduce((acc,r)=> acc + Number(r.price||0) + Number(r.lateFeeCharged||0), 0);
+      const avg = allDelivered.length ? money/allDelivered.length : 0;
+      deliveredBanner = `
+        <div class="delivered-money-banner">
+          <span class="dmb-icon">${ICONS.box}</span>
+          <div class="dmb-txt">
+            <span class="dmb-title">Dinero cobrado · Entregadas</span>
+            <span class="dmb-amount">$ ${money.toFixed(2)}</span>
+            <span class="dmb-sub">${allDelivered.length} reparación(es) entregada(s) · promedio $ ${avg.toFixed(2)}</span>
+          </div>
+        </div>`;
+    }
     const banner = `<div class="repairs-total-banner">
       <span>Reparaciones totales <b>${totalAll}</b></span>
       <span class="rtb-mini">
@@ -282,6 +376,7 @@ const Views = (() => {
     </div>`;
     view().innerHTML = `
       ${banner}
+      ${deliveredBanner}
       <div class="filter-bar">
         <div class="select-elegant">
           <select id="repairsFilter" aria-label="Filtrar reparaciones">${opts}</select>
@@ -1357,6 +1452,11 @@ const Views = (() => {
     document.getElementById('ticketBtn').onclick = ()=>{ showLabel(r); };
     bindDuplicateBtn(id);
     document.getElementById('delBtn').onclick = async ()=>{
+      // v64 — el ID de una copia duplicada no se puede eliminar
+      if(r.duplicatedFrom){
+        UI.toast('🔒 El ID '+r.id+' es una copia generada por duplicación y no se puede eliminar. Puedes vaciar sus datos editándola.');
+        return;
+      }
       const ok = await UI.confirmDialog({
         title:'Eliminar reparación',
         message:`¿Eliminar definitivamente la reparación ${r.id}? Esta acción no se puede deshacer.`,
@@ -1659,7 +1759,7 @@ const Views = (() => {
           <div class="form-group"><label>Rama</label><input id="ghBranch" value="${escape(g.branch||'main')}" placeholder="main"></div>
           <div class="form-group"><label>Carpeta base</label><input id="ghPath" value="${escape(g.path||'taller-data')}" placeholder="taller-data"></div>
         </div>
-        <div class="form-group"><label>Token (Fine-grained · Contents: read/write)</label><div class="pwd-wrap"><input id="ghToken" type="password" value="${escape(g.token||'')}" placeholder="github_pat_..."><button type="button" class="pwd-eye" data-pwd-toggle aria-label="Mostrar token"><svg viewBox="0 0 24 24" class="ico eye-on"><path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg><svg viewBox="0 0 24 24" class="ico eye-off"><path d="M2 4.3L3.3 3l18 18-1.3 1.3-3-3A12 12 0 0 1 12 20C5 20 1 13 1 13a17 17 0 0 1 4.4-5.1L2 4.3zM12 8a5 5 0 0 1 5 5c0 .7-.1 1.3-.4 1.9l-2-2A3 3 0 0 0 12 10c-.3 0-.6 0-.9.1l-2-2C9.7 8 10.8 8 12 8zm0-3c7 0 11 7 11 7a17 17 0 0 1-3.2 4l-1.4-1.4A14 14 0 0 0 21 13s-3.5-6-9-6c-.8 0-1.5.1-2.2.3L8.3 5.9C9.5 5.3 10.7 5 12 5z"/></svg></button></div></div>
+        <div class="form-group"><label>Token (Fine-grained · Contents: read/write)</label><div class="pwd-wrap"><input id="ghToken" type="text" value="${escape(g.token||'')}" placeholder="github_pat_..."><button type="button" class="pwd-eye" data-pwd-toggle aria-label="Ocultar token"><svg viewBox="0 0 24 24" class="ico eye-off"><path d="M2 4.3L3.3 3l18 18-1.3 1.3-3-3A12 12 0 0 1 12 20C5 20 1 13 1 13a17 17 0 0 1 4.4-5.1L2 4.3zM12 8a5 5 0 0 1 5 5c0 .7-.1 1.3-.4 1.9l-2-2A3 3 0 0 0 12 10c-.3 0-.6 0-.9.1l-2-2C9.7 8 10.8 8 12 8zm0-3c7 0 11 7 11 7a17 17 0 0 1-3.2 4l-1.4-1.4A14 14 0 0 0 21 13s-3.5-6-9-6c-.8 0-1.5.1-2.2.3L8.3 5.9C9.5 5.3 10.7 5 12 5z"/></svg></button></div><p class="muted small" style="margin:4px 0 0">v65: el token se muestra VISIBLE para poder copiarlo/verificarlo de un vistazo; el ojo lo oculta si lo prefieres.</p></div>
         <div class="form-group">
           <label class="inline-check"><input type="checkbox" id="ghAuto" ${g.autoSync?'checked':''}> Sincronización automática al guardar</label>
         </div>
@@ -1766,6 +1866,20 @@ const Views = (() => {
           <div class="form-group" style="margin:0"><button class="btn-secondary" id="addDeviceBtn">Añadir</button></div>
         </div>
       </div>
+
+      ${typeof DB.suppliers !== 'undefined' ? `
+      <div class="admin-card" id="adm-suppliers">
+        <h3>🧰 Proveedores de piezas</h3>
+        <p>Contactos de donde consigues repuestos: datos completos, varios teléfonos (llamada y SMS), piezas que vende, notas. Se sincronizan con todos los dispositivos.</p>
+        <div class="btn-row" style="margin:0 0 12px">
+          <button class="btn-primary" id="supAddBtn">${ICONS.plus} Nuevo proveedor</button>
+        </div>
+        <div class="sup-search select-elegant" style="margin-bottom:10px">
+          <input id="supSearch" placeholder="🔍 Buscar por nombre, empresa, teléfono o pieza…" style="width:100%">
+        </div>
+        <div id="supList"></div>
+        <p class="muted small" id="supCount" style="margin:8px 0 0"></p>
+      </div>` : ''}
 
       <div class="admin-card" id="adm-products">
         <h3>Productos para ventas y compras</h3>
@@ -2137,11 +2251,23 @@ const Views = (() => {
       }catch(_){}
       const pl = document.getElementById('pickLoc');
       if(pl) pl.onclick = async ()=>{
-        try{ await LocalFile.pickLocation(); UI.toast('Ubicación guardada'); paintLocalCardState(); }
+        try{
+          await LocalFile.pickLocation();
+          // v65 — el estado YA no depende de la carrera con IndexedDB:
+          // pickLocation garantiza cachedHandle (memoria) aunque el guardado
+          // persistente falle; repintar tras resolver de verdad.
+          UI.toast('Ubicación guardada');
+          paintLocalCardState();
+          try{ window.dispatchEvent(new Event('localfile-ready')); }catch(_){}
+        }
         catch(e){ if(e.name!=='AbortError') UI.toast('Error: '+e.message); }
       };
       const clr = document.getElementById('clearLoc');
-      if(clr) clr.onclick = async ()=>{ await LocalFile.clearHandle(); UI.toast('Ubicación quitada'); paintLocalCardState(); };
+      if(clr) clr.onclick = async ()=>{
+        try{ await LocalFile.clearHandle(); }catch(_){}
+        UI.toast('Ubicación quitada');
+        paintLocalCardState();
+      };
       const lf = document.getElementById('loadFromLoc');
       if(lf) lf.onclick = async ()=>{
         try{
@@ -2288,7 +2414,7 @@ const Views = (() => {
     if(exportLoc) exportLoc.onclick = async ()=>{
       const s = DB.exportSummary();
       const kb = (s.bytes/1024).toFixed(1);
-      const msg = `La copia incluirá: ${s.repairs} reparación(es) · ${s.transactions} compra/venta · ${s.fotos} foto(s) · ${s.audios} audio(s) · ajustes y contraseña (${kb} KB).` +
+      const msg = `La copia incluirá: ${s.repairs} reparación(es) · ${s.transactions} compra/venta · ${s.pendings} pendiente(s) · ${s.suppliers} proveedor(es) · ${s.fotos} foto(s) · ${s.audios} audio(s) · ajustes y contraseña (${kb} KB).` +
         ( ('showSaveFilePicker' in window)
           ? ' Elige la carpeta y el nombre en el diálogo que se abrirá.'
           : ' Tu navegador guardará la copia en Descargas: muévela luego a donde quieras (memoria, nube, PC).' );
@@ -2545,6 +2671,181 @@ const Views = (() => {
       const v = Math.max(0, parseInt(e.target.value,10)||0);
       DB.updateSettings({ defaultWarrantyDays: v });
       UI.toast('Garantía por defecto actualizada');
+    });
+
+    // v66 — PROVEEDORES DE PIEZAS: lista con búsqueda en vivo + CRUD.
+    const supSearchEl = document.getElementById('supSearch');
+    if(supSearchEl){
+      const paint = ()=>{
+        const q = supSearchEl.value;
+        const list = DB.searchSuppliers(q);
+        renderSuppliersList(list, q);
+      };
+      supSearchEl.addEventListener('input', paint);
+      document.getElementById('supAddBtn').onclick = ()=> supplierForm(null);
+      paint();
+    }
+  }
+
+  // v66 — render de la lista de proveedores (dentro de Administración):
+  function renderSuppliersList(list, q){
+    const box = document.getElementById('supList');
+    const count = document.getElementById('supCount');
+    if(!box) return;
+    if(!list.length){
+      box.innerHTML = `<p class="muted small">${q?'Ningún proveedor coincide con «'+escape(q)+'»':'Aún no hay proveedores. Pulsa «Nuevo proveedor» para agregar el primero.'}</p>`;
+    } else {
+      box.innerHTML = list.map(s=>{
+        const phones = (s.phones||[]).filter(Boolean);
+        return `
+        <div class="sup-card" data-sup-id="${escape(s.id)}">
+          <div class="pend-row">
+            <div class="pend-info" style="flex:1;min-width:0">
+              <h3>${escape(s.name||'Proveedor')}</h3>
+              ${s.company?`<p class="sup-company">🏢 ${escape(s.company)}</p>`:''}
+              ${phones.length ? `
+              <div class="card-phones">
+                ${phones.map(ph=>`
+                  <a class="phone-link" href="tel:${escape(UI.phoneClean(ph))}">${ICONS.phone}<span>${escape(ph)}</span></a>
+                  <a class="mini-action sms" href="sms:${escape(UI.phoneSms(ph))}" title="SMS a ${escape(ph)}">${ICONS.sms}<span>SMS</span></a>`).join('')}
+              </div>` : ''}
+              ${s.email?`<p class="muted small" style="margin:4px 0 0">✉️ ${escape(s.email)}</p>`:''}
+              ${s.address?`<p class="muted small" style="margin:2px 0 0">📍 ${escape(s.address)}</p>`:''}
+              ${s.notes?`<p class="muted small" style="margin:2px 0 0">📝 ${escape(s.notes)}</p>`:''}
+              ${(s.parts&&s.parts.length)?`<div class="sup-parts">${s.parts.map(pt=>`<span class="chip-static">${escape(pt)}</span>`).join('')}</div>`:''}
+              <p class="sup-meta">ID ${escape(s.id)}${s.updatedAt?' · actualizado '+fmtDateTime(s.updatedAt):''}</p>
+            </div>
+            <div class="pend-actions" style="align-self:flex-start">
+              <button type="button" class="pend-act" data-sup-edit="${escape(s.id)}" title="Editar proveedor">${ICONS.edit}</button>
+              <button type="button" class="pend-act danger" data-sup-del="${escape(s.id)}" title="Eliminar proveedor">${ICONS.trash}</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+      // bindings de editar / eliminar
+      box.querySelectorAll('[data-sup-edit]').forEach(b=>{
+        b.onclick = e=>{ e.stopPropagation(); supplierForm(DB.findSupplier(b.dataset.supEdit)); };
+      });
+      box.querySelectorAll('[data-sup-del]').forEach(b=>{
+        b.onclick = async e=>{
+          e.stopPropagation();
+          const s = DB.findSupplier(b.dataset.supDel);
+          const ok = await UI.confirmDialog({
+            title:'Eliminar proveedor',
+            message:`¿Eliminar a ${s&&s.name?escape(s.name):'este proveedor'}${s&&s.company?' ('+escape(s.company)+')':''}? Esta acción no se puede deshacer.`,
+            okText:'Eliminar', cancelText:'Cancelar', danger:true
+          });
+          if(!ok) return;
+          DB.deleteSupplier(b.dataset.supDel);
+          UI.toast('Proveedor eliminado');
+          admin();
+        };
+      });
+    }
+    if(count) count.textContent = list.length + ' proveedor(es)' + (q?' · búsqueda: «'+q+'»':'') + ' · sincronizados con todos los dispositivos';
+  }
+
+  // v66 — formulario de proveedor (crear / editar) con multi-teléfono y piezas:
+  function supplierForm(existing){
+    const s = existing || {};
+    const initPhones = (Array.isArray(s.phones) && s.phones.length ? s.phones : (s.phone?[s.phone]:[])).filter(Boolean);
+    let phoneCount = Math.max(1, initPhones.length);
+    let partCount = (s.parts&&s.parts.length) ? s.parts.length : 0;
+    const phoneField = (i,val)=>`
+      <div class="pend-phone-row" data-prow="${i}">
+        <input name="supPhones" inputmode="tel" value="${escape(val||'')}" placeholder="+58 412 0000000">
+        ${i>0?'<button type="button" class="pend-phone-rm" data-rm-phone="1" title="Quitar teléfono">×</button>':''}
+      </div>`;
+    const partField = (i,val)=>`
+      <div class="pend-phone-row" data-partrow="${i}">
+        <input name="supParts" value="${escape(val||'')}" placeholder="Ej. Pantalla LG 43\"">
+        ${i>0?'<button type="button" class="pend-phone-rm" data-rm-part="1" title="Quitar pieza">×</button>':''}
+      </div>`;
+    view().innerHTML = `
+      <button type="button" class="form-close" id="formCloseTop" title="Cerrar">${ICONS.close}</button>
+      <h2 style="margin:0 0 16px;font-size:20px;padding-right:50px">${existing?'Editar proveedor':'Nuevo proveedor de piezas'}</h2>
+      <form id="supplierFormEl" novalidate>
+        <div class="form-group">
+          <label>Nombre / contacto *</label>
+          <input name="name" required autocapitalize="words" value="${escape(s.name||'')}" placeholder="Ej. José Hernández">
+        </div>
+        <div class="form-group">
+          <label>Empresa / negocio</label>
+          <input name="company" autocapitalize="words" value="${escape(s.company||'')}" placeholder="Ej. Repuestos Electrónica CR">
+        </div>
+        <div class="form-group">
+          <label>Teléfonos <span class="muted small">(varios: llamada y SMS a cada uno)</span></label>
+          <div id="supPhonesBox">${initPhones.map((ph,i)=>phoneField(i,ph)).join('')||phoneField(0,'')}</div>
+          <button type="button" class="btn-secondary btn-inline" id="supAddPhone" style="margin-top:6px">${ICONS.plus} Añadir teléfono</button>
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input name="email" type="email" value="${escape(s.email||'')}" placeholder="proveedor@ejemplo.com">
+        </div>
+        <div class="form-group">
+          <label>Dirección</label>
+          <textarea name="address" rows="2" placeholder="Dónde está el local">${escape(s.address||'')}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Piezas que vende</label>
+          <div id="supPartsBox">${partCount?s.parts.map((pt,i)=>partField(i,pt)).join(''):''}</div>
+          <button type="button" class="btn-secondary btn-inline" id="supAddPart" style="margin-top:6px">${ICONS.plus} Añadir pieza</button>
+        </div>
+        <div class="form-group">
+          <label>Notas (precios, horarios, condiciones…)</label>
+          <textarea name="notes" rows="3" placeholder="Ej. entrega a domicilio, solo efectivo, horario 8am-4pm">${escape(s.notes||'')}</textarea>
+        </div>
+        <div class="btn-row">
+          <button type="submit" class="btn-primary">${existing?'Guardar cambios':'Agregar proveedor'}</button>
+          <button type="button" class="btn-secondary" id="cancelSupBtn">Cancelar</button>
+        </div>
+      </form>
+    `;
+    const phonesBox = document.getElementById('supPhonesBox');
+    const partsBox = document.getElementById('supPartsBox');
+    document.getElementById('supAddPhone').onclick = ()=>{
+      phonesBox.insertAdjacentHTML('beforeend', phoneField(phoneCount,''));
+      bindRm(); phoneCount++;
+    };
+    if(!partCount){
+      partsBox.innerHTML = partField(0,''); partCount = 1;
+    }
+    document.getElementById('supAddPart').onclick = ()=>{
+      partsBox.insertAdjacentHTML('beforeend', partField(partCount,''));
+      bindRm(); partCount++;
+    };
+    function bindRm(){
+      phonesBox.querySelectorAll('[data-rm-phone]').forEach(b=>{ b.onclick = ()=>b.closest('[data-prow]').remove(); });
+      partsBox.querySelectorAll('[data-rm-part]').forEach(b=>{ b.onclick = ()=>b.closest('[data-partrow]').remove(); });
+    }
+    bindRm();
+    document.getElementById('formCloseTop').onclick = ()=> App.go('admin');
+    document.getElementById('cancelSupBtn').onclick = ()=> App.go('admin');
+    document.getElementById('supplierFormEl').addEventListener('submit', e=>{
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const name = (fd.get('name')||'').trim();
+      if(!name){ UI.toast('Escribe el nombre del proveedor'); return; }
+      const phones = [...phonesBox.querySelectorAll('input[name="supPhones"]')].map(i=>i.value.trim()).filter(Boolean);
+      const parts = [...partsBox.querySelectorAll('input[name="supParts"]')].map(i=>i.value.trim()).filter(Boolean);
+      const data = {
+        name,
+        company: (fd.get('company')||'').trim() || null,
+        phones,
+        phone: phones[0] || null,
+        email: (fd.get('email')||'').trim() || null,
+        address: (fd.get('address')||'').trim() || null,
+        parts,
+        notes: (fd.get('notes')||'').trim() || null
+      };
+      if(existing){
+        DB.updateSupplier(existing.id, data);
+        UI.toast('Proveedor actualizado');
+      } else {
+        const ns = DB.addSupplier(data);
+        UI.toast('Proveedor agregado: ' + ns.id);
+      }
+      App.go('admin');
     });
   }
 
@@ -2981,6 +3282,8 @@ const Views = (() => {
           <div class="stale-row">
             <span class="status ${r.status}">${statusLabel(r.status)}</span>
             <span class="stale-days">${x.days} día(s)</span>
+            <button type="button" class="stale-notify" data-stale-notify title="Avisar por WhatsApp">${ICONS.wa}<span>WhatsApp</span></button>
+            <button type="button" class="stale-notify sys" data-stale-sys title="Notificación del sistema">${ICONS.bell}<span>Avisar</span></button>
             <button type="button" class="stale-remove" title="Quitar de la lista (el registro se conserva)">Quitar</button>
           </div>
           <h4>${escape(r.clientName||'Cliente')} · ${escape(r.device||'Equipo')}</h4>
@@ -3046,6 +3349,37 @@ const Views = (() => {
         DB.staleDismiss(id, which);
         UI.toast('Quitado de la lista · el registro sigue en el historial');
         summary();
+      };
+    });
+    // v64 — avisar por equipo: WhatsApp y notificación del sistema
+    view().querySelectorAll('[data-stale-notify]').forEach(b=>{
+      b.onclick = e=>{
+        e.stopPropagation();
+        const item = b.closest('.stale-item');
+        const id = item.dataset.staleId;
+        const which = item.dataset.staleWhich;
+        const r = DB.findRepair(id);
+        if(!r || !window.Notify) return;
+        Notify.notifyWa({ r, days: Math.floor((Date.now()-(r.createdAt||Date.now()))/86400000) }, which==='nd'?'nodev':'d30');
+      };
+    });
+    view().querySelectorAll('[data-stale-sys]').forEach(b=>{
+      b.onclick = async e=>{
+        e.stopPropagation();
+        const item = b.closest('.stale-item');
+        const id = item.dataset.staleId;
+        const which = item.dataset.staleWhich;
+        const r = DB.findRepair(id);
+        if(!r || !window.Notify) return;
+        const p = await Notify.askPermission();
+        if(p !== 'granted'){ UI.toast('Permiso de notificaciones denegado'); return; }
+        const days = Math.floor((Date.now()-(r.createdAt||Date.now()))/86400000);
+        Notify.systemNotify(
+          which==='nd' ? 'Equipo sin devolución' : 'Equipo más de 30 días',
+          `${r.clientName||'cliente'} · ${[r.device,r.brand,r.model].filter(Boolean).join(' ')} · ${days} día(s) · ${r.id}`,
+          'taller-'+which
+        );
+        UI.toast('🔔 Notificación enviada');
       };
     });
     bindAccordions();
@@ -3205,6 +3539,10 @@ const Views = (() => {
          <div class="cv-detail-list">${purchaseRows}</div>`
       : `<p class="muted small" style="margin:6px 2px 0">Aún no hay compras registradas.</p>`;
 
+    // v66 — TARJETAS PLEGABLES COMO LAS DEMÁS: la cabecera muestra solo
+    // título + total (una línea); los periodos hoy/semana/mes/año y el
+    // detalle de movimientos viven DENTRO del desplegable → la sección
+    // ocupa mucho menos espacio en pantalla.
     const _row = (cls, label, day, week, month, year, total, count, sub, detailsHtml) => `
       <div class="cv-period ${cls}">
         <button class="cv-period-toggle" data-cvtoggle type="button" aria-expanded="false">
@@ -3212,15 +3550,18 @@ const Views = (() => {
             <span class="cv-period-title">${label}</span>
             <span class="cv-period-total">$ ${total.toFixed(2)}</span>
           </span>
+          <span class="cv-period-sub">${count} movimiento(s) · <span class="cv-period-more">Desplegar ▾</span></span>
+        </button>
+        <div class="cv-period-details" hidden>
           <span class="cv-period-grid">
             <span title="${escape(_pi.day)}"><b>Hoy</b>$ ${day.toFixed(2)}</span>
             <span title="${escape(_pi.week)}"><b>Semana</b>$ ${week.toFixed(2)}</span>
             <span title="${escape(_pi.month)}"><b>Mes</b>$ ${month.toFixed(2)}</span>
             <span title="${escape(_pi.year)}"><b>Año</b>$ ${year.toFixed(2)}</span>
           </span>
-          <span class="cv-period-sub">${count} movimiento(s) — ${sub} · <span class="cv-period-more">Ver detalle ▾</span></span>
-        </button>
-        <div class="cv-period-details" hidden>${detailsHtml}</div>
+          <p class="muted small" style="margin:0">${sub}</p>
+          ${detailsHtml}
+        </div>
       </div>`;
     const _qs = `<div class="cv-periods">
       ${_row('sale','Total de ventas',
@@ -3291,7 +3632,9 @@ const Views = (() => {
     const active = list.filter(p=>!p.done);
     const done = list.filter(p=>p.done);
     const card = (p)=>{
-      const tel = UI.phoneClean(p.phone||'');
+      // v66 — MULTI-TelÉFONO en pendientes: phones[] (alias phone = [0]).
+      // Cada teléfono muestra su enlace para LLAMAR y su botón SMS directo.
+      const phones = (Array.isArray(p.phones) && p.phones.length ? p.phones : (p.phone?[p.phone]:[])).filter(Boolean);
       const dateStr = p.date ? fmtDate(p.date) : '—';
       const overdue = p.date && !p.done && p.date < Date.now();
       return `
@@ -3300,7 +3643,17 @@ const Views = (() => {
           <button type="button" class="pend-check" title="${p.done?'Reabrir':'Marcar hecho'}" aria-label="Marcar">${p.done?'↺':'✓'}</button>
           <div class="pend-info">
             <h3>${escape(p.name||'Sin nombre')}</h3>
-            <p class="muted small">${dateStr}${p.phone?` · <a class="phone-link" href="tel:${escape(tel)}">${escape(p.phone)}</a>`:''}</p>
+            <p class="muted small">${dateStr}</p>
+            ${phones.length ? `
+            <div class="card-phones">
+              ${phones.map(ph=>{
+                const tel = UI.phoneClean(ph);
+                const sms = UI.phoneSms(ph);
+                return `
+                <a class="phone-link" href="tel:${escape(tel)}">${escape(ph)}</a>
+                <a class="mini-action sms" href="sms:${escape(sms)}" data-stop="1" title="SMS a ${escape(ph)}">${ICONS.sms}<span>SMS</span></a>`;
+              }).join('')}
+            </div>` : ''}
           </div>
           <div class="pend-actions">
             <button type="button" class="pend-act" data-act="edit" title="Editar">${ICONS.edit}</button>
@@ -3368,6 +3721,16 @@ const Views = (() => {
 
   function pendingForm(existing){
     const p = existing || {};
+    // v66 — teléfonos múltiples: repinta la lista de campos de teléfono
+    // (mismo patrón que el formulario de reparaciones: + botón añade campo).
+    const initPhones = (Array.isArray(p.phones) && p.phones.length ? p.phones : (p.phone?[p.phone]:[])).filter(Boolean);
+    let phoneCount = Math.max(1, initPhones.length);
+    function phoneField(i, val){
+      return `<div class="pend-phone-row" data-prow="${i}">
+        <input name="phones" inputmode="tel" value="${escape(val||'')}" placeholder="+58 412 0000000">
+        ${i>0?'<button type="button" class="pend-phone-rm" data-rm-phone="1" title="Quitar teléfono">×</button>':''}
+      </div>`;
+    }
     view().innerHTML = `
       <button type="button" class="form-close" id="formCloseTop" title="Cerrar">${ICONS.close}</button>
       <h2 style="margin:0 0 16px;font-size:20px;padding-right:50px">${existing?'Editar pendiente':'Nuevo pendiente'}</h2>
@@ -3377,8 +3740,9 @@ const Views = (() => {
           <input name="name" required autocapitalize="words" value="${escape(p.name||'')}" placeholder="Quién o qué">
         </div>
         <div class="form-group">
-          <label>Teléfono</label>
-          <input name="phone" inputmode="tel" value="${escape(p.phone||'')}" placeholder="+58 412 0000000">
+          <label>Teléfonos <span class="muted small">(varios: SMS a cada uno desde la lista)</span></label>
+          <div id="pendPhonesBox">${initPhones.map((ph,i)=>phoneField(i,ph)).join('')||phoneField(0,'')}</div>
+          <button type="button" class="btn-secondary btn-inline" id="pendAddPhone" style="margin-top:6px">${ICONS.plus} Añadir teléfono</button>
         </div>
         <div class="form-group">
           <label>Fecha</label>
@@ -3398,6 +3762,18 @@ const Views = (() => {
         </div>
       </form>
     `;
+    const phonesBox = document.getElementById('pendPhonesBox');
+    document.getElementById('pendAddPhone').onclick = ()=>{
+      phonesBox.insertAdjacentHTML('beforeend', phoneField(phoneCount,''));
+      bindRmButtons();
+      phoneCount++;
+    };
+    function bindRmButtons(){
+      phonesBox.querySelectorAll('[data-rm-phone]').forEach(b=>{
+        b.onclick = ()=>{ b.closest('[data-prow]').remove(); };
+      });
+    }
+    bindRmButtons();
     document.getElementById('formCloseTop').onclick = ()=> App.go('pendings');
     document.getElementById('cancelPendBtn').onclick = ()=> App.go('pendings');
     document.getElementById('pendingFormEl').addEventListener('submit', e=>{
@@ -3406,9 +3782,12 @@ const Views = (() => {
       const name = (fd.get('name')||'').trim();
       if(!name){ UI.toast('Escribe el nombre'); return; }
       const dateRaw = fd.get('date');
+      const phones = [...phonesBox.querySelectorAll('input[name="phones"]')]
+        .map(i=>i.value.trim()).filter(Boolean);
       const data = {
         name,
-        phone: (fd.get('phone')||'').trim() || null,
+        phones,
+        phone: phones[0] || null,
         date: dateRaw ? UI.localNoon(dateRaw) : null,
         address: (fd.get('address')||'').trim() || null,
         details: (fd.get('details')||'').trim() || null
@@ -3475,6 +3854,7 @@ const Views = (() => {
       <h2 style="margin:0 0 6px;font-size:19px">Duplicar ${escape(r.id)}</h2>
       <p class="muted small" style="margin:0 0 12px">Marca los datos que quieres <b>ELIMINAR de la copia</b> (quedarán vacíos). Los no marcados se copian tal cual.</p>
       <div class="dup-fields-list">${checks || '<p class="muted small">La reparación casi no tiene datos: la copia saldrá limpia.</p>'}</div>
+      <p class="dup-id-note">🔒 El nuevo ID de la copia <b>no se podrá eliminar</b> después: queda registrado como duplicado de ${escape(r.id)} (puedes vaciar todos sus datos editándola, pero el registro se conserva).</p>
       <div class="btn-row" style="margin-top:14px">
         <button type="button" class="btn-secondary" id="dupCancel">Cancelar</button>
         <button type="button" class="btn-primary" id="dupGo">Crear la copia</button>
@@ -3485,7 +3865,7 @@ const Views = (() => {
       const drop = [...document.querySelectorAll('.dup-field-check input:checked')].map(i=>i.dataset.drop);
       const copy = DB.duplicateRepair(id, drop);
       UI.closeModal();
-      UI.toast('✓ Copia creada: '+copy.id+' (debajo de la original)');
+      UI.toast('✓ Copia creada: '+copy.id+' (debajo de la original · ID no eliminable)');
       App.go('repairs');
     };
   }
@@ -3861,5 +4241,5 @@ const Views = (() => {
     }catch(e){}
   }
 
-  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, summary, newTransaction, newChooser, runSystemAudit, openAudit, autoAuditOnLoad, pendings, pendingForm };
+  return { dashboard, repairsList, newRepair, search, admin, showRepair, showLabel, sales, summary, newTransaction, newChooser, runSystemAudit, openAudit, autoAuditOnLoad, pendings, pendingForm, supplierForm };
 })();

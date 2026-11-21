@@ -127,16 +127,20 @@ input,select,textarea{font-family:inherit;font-size:16px;max-width:100%}
 .icon-btn-sm .ico{width:18px;height:18px}
 .icon-btn-sm:hover{color:#ff6b6b}
 
-/* Botón cerrar flotante (en formulario nueva reparación) */
+/* Botón cerrar flotante (en formulario nueva reparación)
+   v64 — SIN fondo (transparente) y MÁS GRANDE: antes era un círculo negro
+   de 40px con blur; ahora es un botón limpio de 48px sin fondo que flota
+   sobre la vista, más fácil de tocar y menos invasivo. */
 .form-close{
   position:fixed;top:calc(env(safe-area-inset-top) + 8px);right:10px;z-index:30;
-  width:40px;height:40px;border-radius:50%;
-  background:rgba(0,0,0,.55);backdrop-filter:blur(6px);
-  border:1px solid var(--border);color:#fff;cursor:pointer;
+  width:48px;height:48px;border-radius:50%;
+  background:transparent;backdrop-filter:none;
+  border:none;color:#ff6b6b;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:0 6px 18px rgba(0,0,0,.4)
+  box-shadow:none;padding:0;opacity:.9
 }
-.form-close .ico{width:20px;height:20px}
+.form-close .ico{width:30px;height:30px;stroke-width:1.6}
+.form-close:active{transform:scale(.88);opacity:1}
 
 main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 @media(min-width:600px){ main{padding-top:104px} }
@@ -1334,6 +1338,20 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .repairs-total-banner .rtb-mini span{font-size:11px;color:var(--muted);background:rgba(255,255,255,.04);padding:3px 8px;border-radius:999px;border:1px solid var(--border)}
 .repairs-total-banner .rtb-mini b{font-size:12px;margin-left:4px;color:var(--text)}
 
+/* v65 — banda de dinero cobrado en el filtro «Entregadas» */
+.delivered-money-banner{
+  display:flex;align-items:center;gap:12px;
+  background:linear-gradient(135deg,rgba(76,201,115,.16),var(--surface));
+  border:1px solid rgba(76,201,115,.4);border-radius:14px;
+  padding:12px 16px;margin:0 0 12px
+}
+.delivered-money-banner .dmb-icon{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:12px;background:rgba(76,201,115,.15);flex:0 0 auto}
+.delivered-money-banner .dmb-icon .ico{width:24px;height:24px}
+.delivered-money-banner .dmb-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.delivered-money-banner .dmb-title{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.delivered-money-banner .dmb-amount{font-size:24px;font-weight:800;color:#7be0a0;line-height:1.1}
+.delivered-money-banner .dmb-sub{font-size:11.5px;color:var(--muted)}
+
 .cv-quick-stats{
   display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:6px 0 14px
 }
@@ -1805,6 +1823,27 @@ html,body{max-width:100%;overflow-x:hidden}
 }
 .dup-field-check:active{background:rgba(255,255,255,.05)}
 .dup-field-check input{width:18px;height:18px;flex:0 0 auto;accent-color:#e05555}
+/* v64 — aviso en el diálogo de duplicación: el nuevo ID no se puede borrar */
+.dup-id-note{
+  margin:12px 0 0;padding:10px 12px;border-radius:10px;font-size:12.5px;
+  background:rgba(224,85,85,.09);border:1px solid rgba(224,85,85,.3);color:#ffb3ab
+}
+/* v64 — botón duplicar en las tarjetas de la lista */
+.mini-action.dup{color:#8fd48f}
+/* v64 — botones de aviso (notificación/WhatsApp) en el dashboard */
+.notify-actions{display:flex;gap:8px;flex-wrap:wrap}
+.notify-actions .btn-inline{font-size:12.5px;padding:8px 12px}
+/* v64 — botones de aviso por equipo en las listas del Resumen */
+.stale-notify{
+  display:inline-flex;align-items:center;gap:5px;cursor:pointer;
+  padding:5px 10px;border-radius:8px;font-size:12px;font-weight:600;
+  background:rgba(76,201,115,.12);border:1px solid rgba(76,201,115,.35);color:#7be0a0
+}
+.stale-notify.sys{
+  background:rgba(232,196,106,.1);border-color:rgba(232,196,106,.35);color:#e8c46a
+}
+.stale-notify svg{width:14px;height:14px}
+.stale-notify:active{transform:scale(.94)}
 /* === v61: Botones GRANDES de captura rápida de firma (Cámara / Galería) === */
 .sig-quick-btns{
   display:flex;gap:10px;margin:10px 0 4px
@@ -1835,3 +1874,31 @@ html,body{max-width:100%;overflow-x:hidden}
   display:flex;align-items:center;justify-content:center
 }
 .sig-shot .sig-remove svg{width:16px;height:16px;fill:#fff}
+
+/* v66 — tarjetas plegables compactas (periodos dentro del desplegable) */
+.cv-period-details .cv-period-grid{margin:2px 0 6px}
+.cv-period-sub{margin:6px 0 0}
+
+/* v66 — multi-teléfono en pendientes y proveedores */
+.pend-phone-row{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+.pend-phone-row input{flex:1;min-width:0}
+.pend-phone-rm{
+  all:unset;cursor:pointer;width:34px;height:34px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  color:#ff8a7a;background:rgba(255,138,122,.1);border:1px solid rgba(255,138,122,.3);flex:0 0 auto
+}
+.pend-phone-rm:hover{background:rgba(255,138,122,.2)}
+
+/* v66 — proveedores de piezas */
+.sup-search{margin:0 0 12px}
+.sup-card{
+  background:linear-gradient(135deg,var(--surface-2),var(--surface));
+  border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px
+}
+.sup-card h3{margin:0 0 2px;font-size:16px}
+.sup-card .sup-company{font-size:12.5px;color:var(--muted);margin:0 0 6px}
+.sup-card .card-phones{margin:4px 0}
+.sup-parts{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.sup-parts .chip-static{font-size:11.5px}
+.sup-card .pend-actions{display:flex;gap:6px}
+.sup-meta{font-size:11.5px;color:var(--muted);margin-top:8px}

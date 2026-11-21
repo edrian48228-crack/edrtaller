@@ -116,11 +116,15 @@ const GitSync = (() => {
   let knownDeleted = new Set();
   let knownDirtyTx = new Set(); // transacciones nuevas/editadas sin confirmar en servidor
   let knownDirtyPendings = new Set(); // v63: pendientes sin confirmar en servidor
+  let knownDirtySuppliers = new Set(); // v66: proveedores sin confirmar en servidor
   // Tombstones de transacciones (las transacciones viven dentro de index.json,
   // así que necesitamos recordar localmente cuáles borramos para que no
   // reaparezcan si otro dispositivo sube un index.json antiguo antes que
   // nosotros podamos subir el nuestro.)
   let knownDeletedTx = new Set();
+  // v63: tombstones de pendientes · v66: tombstones de proveedores
+  let knownDeletedPendings = new Set();
+  let knownDeletedSuppliers = new Set();
 
   // ---------- Configuración ----------
   function g(){ return DB.settings.github; }
@@ -319,12 +323,15 @@ const GitSync = (() => {
     catch(_){ knownDirtyTx = new Set(); }
     try{ knownDirtyPendings = new Set(JSON.parse(localStorage.getItem('taller_gh_dirty_pendings')||'[]')); }
     catch(_){ knownDirtyPendings = new Set(); }
+    try{ knownDirtySuppliers = new Set(JSON.parse(localStorage.getItem('taller_gh_dirty_suppliers')||'[]')); }
+    catch(_){ knownDirtySuppliers = new Set(); }
   }
   function saveHashCache(){
     try{ localStorage.setItem('taller_gh_hashes', JSON.stringify(lastHashes)); }catch(_){}
     try{ localStorage.setItem('taller_gh_dirty_repairs', JSON.stringify([...knownDirty])); }catch(_){}
     try{ localStorage.setItem('taller_gh_dirty_tx', JSON.stringify([...knownDirtyTx])); }catch(_){}
     try{ localStorage.setItem('taller_gh_dirty_pendings', JSON.stringify([...knownDirtyPendings])); }catch(_){}
+    try{ localStorage.setItem('taller_gh_dirty_suppliers', JSON.stringify([...knownDirtySuppliers])); }catch(_){}
   }
   function loadDeleted(){
     try{ knownDeleted = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted')||'[]')); }
@@ -333,11 +340,14 @@ const GitSync = (() => {
     catch(_){ knownDeletedTx = new Set(); }
     try{ knownDeletedPendings = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted_pendings')||'[]')); }
     catch(_){ knownDeletedPendings = new Set(); }
+    try{ knownDeletedSuppliers = new Set(JSON.parse(localStorage.getItem('taller_gh_deleted_suppliers')||'[]')); }
+    catch(_){ knownDeletedSuppliers = new Set(); }
   }
   function saveDeleted(){
     try{ localStorage.setItem('taller_gh_deleted', JSON.stringify([...knownDeleted])); }catch(_){}
     try{ localStorage.setItem('taller_gh_deleted_tx', JSON.stringify([...knownDeletedTx])); }catch(_){}
     try{ localStorage.setItem('taller_gh_deleted_pendings', JSON.stringify([...knownDeletedPendings])); }catch(_){}
+    try{ localStorage.setItem('taller_gh_deleted_suppliers', JSON.stringify([...knownDeletedSuppliers])); }catch(_){}
   }
   function markDeleted(id){
     knownDeleted.add(id);
@@ -379,6 +389,21 @@ const GitSync = (() => {
     knownDeletedPendings.add(id);
     saveDeleted();
     GitLog.info('marca', `Pendiente ${id} pendiente de eliminar en GitHub`);
+    schedulePush();
+  }
+  // v66 — PROVEEDORES: mismos marcados (dirty/deleted) para la lista de
+  // proveedores de piezas, que vive en el índice junto a los pendientes.
+  function markSupplierDirty(id){
+    if(!id) return;
+    knownDirtySuppliers.add(id);
+    saveHashCache();
+    GitLog.info('local', `Proveedor ${id} guardado localmente y pendiente de subir`);
+    schedulePush();
+  }
+  function markSupplierDeleted(id){
+    knownDeletedSuppliers.add(id);
+    saveDeleted();
+    GitLog.info('marca', `Proveedor ${id} pendiente de eliminar en GitHub`);
     schedulePush();
   }
 
@@ -426,6 +451,9 @@ const GitSync = (() => {
       transactions: d.transactions || [],
       // v63 — PENDIENTES: viajan en el índice (datos livianos, sin fotos)
       pendings: d.pendings || [],
+      // v66 — PROVEEDORES: igual que los pendientes, en el índice
+      suppliers: d.suppliers || [],
+      supplierCounter: d.supplierCounter || 1,
       repairIds: ids
     }, null, 2);
   }
@@ -555,6 +583,8 @@ const GitSync = (() => {
   function resetCaches(){
     lastHashes = {}; knownDirty = new Set(); knownDeleted = new Set();
     knownDirtyTx = new Set(); knownDeletedTx = new Set();
+    knownDirtyPendings = new Set(); knownDeletedPendings = new Set();
+    knownDirtySuppliers = new Set(); knownDeletedSuppliers = new Set();
     rateLimitedUntil = 0;
     pushRetries = 0;
     if(pushRetryTimer){ clearTimeout(pushRetryTimer); pushRetryTimer = null; }
@@ -564,6 +594,10 @@ const GitSync = (() => {
       localStorage.removeItem('taller_gh_dirty_tx');
       localStorage.removeItem('taller_gh_deleted');
       localStorage.removeItem('taller_gh_deleted_tx');
+      localStorage.removeItem('taller_gh_dirty_pendings');
+      localStorage.removeItem('taller_gh_deleted_pendings');
+      localStorage.removeItem('taller_gh_dirty_suppliers');
+      localStorage.removeItem('taller_gh_deleted_suppliers');
       // v51: el arranque tras el reset NO re-baja la nube (autoPull
       // traería de vuelta todo lo que el usuario acaba de reiniciar).
       // Se consume una sola vez en Bootstrap.run().
@@ -929,6 +963,24 @@ const GitSync = (() => {
       }
     }
     pulledPendings = pulledPendings.filter(p => !knownDeletedPendings.has(p.id));
+    // v66 — PROVEEDORES: misma fusión no destructiva (locales conservadas;
+    // gana la edición más nueva por updatedAt; tombstones no reaparecen).
+    let pulledSuppliers = Array.isArray(idxData.suppliers) ? idxData.suppliers.slice() : [];
+    {
+      const remoteSupMap = new Map(pulledSuppliers.map(s=>[s.id, s]));
+      for(const s of DB.suppliers){
+        if(knownDeletedSuppliers.has(s.id)) continue;
+        const clash = remoteSupMap.get(s.id);
+        if(!clash){
+          pulledSuppliers.push(s);
+          if(!knownDirtySuppliers.has(s.id)) knownDirtySuppliers.add(s.id);
+        } else {
+          if((clash.updatedAt||0) === (s.updatedAt||0)) continue;
+          if((s.updatedAt||0) > (clash.updatedAt||0)){ remoteSupMap.set(s.id, s); pulledSuppliers = pulledSuppliers.map(x=>x.id===s.id?s:x); }
+        }
+      }
+      pulledSuppliers = pulledSuppliers.filter(s => !knownDeletedSuppliers.has(s.id));
+    }
     // 4) Aplicar: fusión no destructiva — las locales NUNCA se borran aquí
     //    (mismo criterio anti-pérdida que pullAll: lo local pendiente gana).
     //    Ediciones locales más nuevas que el remoto ganan (updatedAt).
@@ -961,9 +1013,11 @@ const GitSync = (() => {
         settings: { ...(idxData.settings||{}), github: localGithub, githubShared: (idxData.settings && idxData.settings.githubShared) ? idxData.settings.githubShared : localShared },
         transactions: pulledTx,
         pendings: pulledPendings,
+        suppliers: pulledSuppliers,
         counter: Math.max(idxData.counter||1, DB.all.counter||1),
         txCounter: Math.max(idxData.txCounter||1, DB.all.txCounter||1),
         pendCounter: Math.max(idxData.pendCounter||1, DB.all.pendCounter||1),
+        supplierCounter: Math.max(idxData.supplierCounter||1, DB.all.supplierCounter||1),
         repairs: mergedRepairs
       });
       // Restaurar settings puramente locales que el repo no debe pisar
@@ -1132,6 +1186,23 @@ const GitSync = (() => {
         }
       }
 
+      // --- v66: fusión de PROVEEDORES (mismo criterio no destructivo) ---
+      let pulledSuppliers = idxData ? (idxData.suppliers || []) : [];
+      {
+        const remoteSupMap = new Map(pulledSuppliers.map(s=>[s.id, s]));
+        for(const s of DB.suppliers){
+          if(knownDeletedSuppliers.has(s.id)) continue;
+          const clash = remoteSupMap.get(s.id);
+          if(!clash){
+            pulledSuppliers.push(s);
+            if(!knownDirtySuppliers.has(s.id)) knownDirtySuppliers.add(s.id);
+          } else {
+            if((clash.updatedAt||0) === (s.updatedAt||0)) continue;
+            if((s.updatedAt||0) > (clash.updatedAt||0)){ pulledSuppliers = pulledSuppliers.map(x=>x.id===s.id?s:x); }
+          }
+        }
+      }
+
       // --- Protección contra "datos eliminados que reaparecen" ---
       // Si tenemos tombstones locales (cosas borradas en este dispositivo
       // pero que el otro dispositivo aún no ha visto), las filtramos del
@@ -1247,7 +1318,9 @@ const GitSync = (() => {
         counter: Math.max(idxData.counter || 1, DB.all.counter || 1),
         txCounter: Math.max(idxData.txCounter || 1, DB.all.txCounter || 1),
         pendCounter: Math.max(idxData.pendCounter || 1, DB.all.pendCounter || 1),
+        supplierCounter: Math.max(idxData.supplierCounter || 1, DB.all.supplierCounter || 1),
         pendings: pulledPendings,
+        suppliers: pulledSuppliers,
         repairs: pulledRepairs
       } : {
         schemaVersion: DB.all.schemaVersion || 1,
@@ -1257,9 +1330,11 @@ const GitSync = (() => {
         settings: (DB.all.settings || {}),
         transactions: pulledTx,
         pendings: pulledPendings,
+        suppliers: pulledSuppliers,
         counter: DB.all.counter || 1,
         txCounter: DB.all.txCounter || 1,
         pendCounter: DB.all.pendCounter || 1,
+        supplierCounter: DB.all.supplierCounter || 1,
         repairs: pulledRepairs
       };
 
@@ -1469,6 +1544,9 @@ const GitSync = (() => {
         toast('Bajando cambios desde la nube…');
         await pullAll();
         try{ if(window.App && App.updatePendBadge) App.updatePendBadge(); }catch(_){}
+        // v64 — datos nuevos desde la nube: re-escanear notificaciones
+        // (un equipo que otro móvil marcó >30 días avisa aquí también).
+        try{ if(window.Notify && Notify.fire) Notify.fire(); }catch(_){}
         if(viewIsSafeToRefresh()){
           try{ if(window.App && typeof App.refresh === 'function') App.refresh(); }catch(_){}
         } else {
@@ -1540,6 +1618,7 @@ const GitSync = (() => {
     push: pushAll, pull: pullAll, schedulePush, markDirty, markDirtyTx,
     getPendingPush, getPendingPull,
     markDeleted, markDeletedTx, markPendingDirty, markPendingDeleted,
+    markSupplierDirty, markSupplierDeleted,
     startAutoPull, stopAutoPull, autoPullNow: autoPullTick,
     // Reset total (v5):
     resetCaches, wipeRemote,
@@ -1559,23 +1638,55 @@ const LocalFile = (() => {
   const STORE = 'kv';
   let cachedHandle = null;
   let writeTimer = null;
+  let dbConn = null;          // v65 — conexión única reutilizable
 
+  // v65 — idb() robusto: reutiliza la conexión (antes cada llamada abría
+  // otra DB y algunos navegadores bloqueaban la versión, dejando el put
+  // colgado → «Elegir ubicación» parecía guardar pero el estado caía a
+  // «sin configurar» y «Cargar desde el archivo» quedaba muerto).
   function idb(){
+    if(dbConn) return Promise.resolve(dbConn);
     return new Promise((res, rej)=>{
       const req = indexedDB.open(DB_NAME, 1);
-      req.onupgradeneeded = ()=> req.result.createObjectStore(STORE);
-      req.onsuccess = ()=> res(req.result);
+      req.onupgradeneeded = ()=> {
+        const db = req.result;
+        if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      };
+      req.onsuccess = ()=> {
+        dbConn = req.result;
+        dbConn.onversionchange = ()=> { dbConn.close(); dbConn = null; };
+        res(dbConn);
+      };
       req.onerror = ()=> rej(req.error);
+      req.onblocked = ()=> rej(new Error('IndexedDB bloqueado por otra pestaña'));
     });
   }
+  // v65 — guardar el handle con REINTENTO y degradación a memoria:
+  // si IndexedDB no puede clonar/guardar el handle, la ubicación sigue
+  // activa en esta sesión (antes el fallo dejaba el botón «guardado»
+  // pero hasHandle()==false tras recargar: estados inconsistentes).
   async function setHandle(h){
     cachedHandle = h;
-    const db = await idb();
-    await new Promise((r,j)=>{
-      const tx = db.transaction(STORE,'readwrite');
-      tx.objectStore(STORE).put(h, 'fileHandle');
-      tx.oncomplete = r; tx.onerror = ()=>j(tx.error);
-    });
+    for(let attempt=0; attempt<2; attempt++){
+      try{
+        const db = await idb();
+        await new Promise((r,j)=>{
+          const tx = db.transaction(STORE,'readwrite');
+          tx.objectStore(STORE).put(h, 'fileHandle');
+          tx.oncomplete = r; tx.onerror = ()=>j(tx.error);
+        });
+        return true;
+      }catch(e){
+        console.warn('LocalFile setHandle intento '+(attempt+1), e);
+        if(attempt === 1){
+          // persistió en memoria al menos (sesión actual funcional):
+          console.warn('LocalFile: handle solo en memoria (IndexedDB no disponible)');
+          return false;
+        }
+        dbConn = null;   // reconectar en el segundo intento
+      }
+    }
+    return false;
   }
   async function loadHandle(){
     if(cachedHandle) return cachedHandle;
@@ -1587,7 +1698,7 @@ const LocalFile = (() => {
         req.onsuccess = ()=> r(req.result||null);
         req.onerror = ()=> j(req.error);
       });
-    }catch(e){ cachedHandle = null; }
+    }catch(e){ cachedHandle = null; dbConn = null; }
     return cachedHandle;
   }
   async function clearHandle(){
@@ -1599,7 +1710,7 @@ const LocalFile = (() => {
         tx.objectStore(STORE).delete('fileHandle');
         tx.oncomplete = r; tx.onerror = ()=>j(tx.error);
       });
-    }catch(e){}
+    }catch(e){ dbConn = null; }
   }
   function isSupported(){ return 'showSaveFilePicker' in window; }
   function hasHandle(){ return !!cachedHandle; }

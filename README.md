@@ -1,8 +1,98 @@
-# Taller — PWA de reparaciones (v6.4.0)
+# Taller — PWA de reparaciones (v6.7.0)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## v6.7.0 — Regla de demoras por completado, proveedores, pendientes con SMS y audio ligero
+
+- **Icono de duplicar en cada reparación**: cada tarjeta de la sección de
+  reparaciones tiene su botón de duplicar (junto al de eliminar); la copia
+  pasa a estado pendiente con fecha actual y queda arriba en «Recientes».
+- **Total de ventas / Total de compras como desplegables**: las dos tarjetas
+  de «Compras y Ventas» ahora son listas plegables como las demás: la
+  cabecera ocupa una línea (título + total) y los periodos hoy/semana/mes/
+  año y el detalle de movimientos se despliegan al tocarlas.
+- **Pendientes con SMS y varios teléfonos**: cada pendiente admite varios
+  números («Añadir teléfono») y la lista muestra enlace de llamada y botón
+  **SMS** por cada teléfono.
+- **Regla de demoras (super-importante)**: los equipos que pasan a «más de
+  30 días en el taller» y a «sin devolución» son **solo los que están en
+  estado Completado** (terminado y listo, sin recoger). Pendientes, en
+  proceso, entregadas y canceladas no entran a esas listas.
+- **Proveedores de piezas (nuevo)**: en Administración hay una tarjeta bien
+  visible para administrar proveedores: nombre, empresa, **varios
+  teléfonos** (con llamada y SMS), email, dirección, **piezas que vende**,
+  notas, búsqueda por cualquier campo, edición y borrado. Se sincronizan
+  con todos los dispositivos (viajan en el índice de la nube).
+- **Administración → archivo local**: «Elegir ubicación», «Cargar desde el
+  archivo» y «Quitar ubicación» re-verificados y funcionando (conexión
+  IndexedDB única y repintado en vivo del estado).
+- **Inicio con contadores de demora**: la pantalla de inicio muestra
+  cuántos equipos tienen **más de 30 días en el taller** y cuántos están
+  **sin devolución** (mismo dato del Resumen), con salto directo al Resumen.
+- **Audio optimizado**: las notas de voz se graban a 64 kbps mono Opus
+  (calidad transparente para voz según la especificación del códec):
+  ~3× menos espacio en respaldos, IndexedDB y sincronización, sin pérdida
+  audible.
+
+## v6.6.0 — Regla de demoras, Administración arreglada, entregadas y duplicado
+
+- **Regla del taller (demoras)**: los equipos que pasan a «Más de 30 días en
+  el taller» y a «Sin devolución» son SOLO los que **no tienen estado de
+  entregada**. Al entregar un equipo (por firma, entrega normal o cambio
+  manual) se limpian automáticamente todas sus marcas de demora
+  (`staleDismissed`, `preNoDevolutionStatus`, `noDevolutionAt`) y el
+  recargo pendiente se liquida al cobrarse.
+- **Administración arreglada** («Guardar JSON en una ubicación»):
+  - `LocalFile` ahora reutiliza una única conexión IndexedDB (antes cada
+    llamada abría otra base y algunos navegadores bloqueaban la versión,
+    dejando «Cargar desde el archivo» muerto o «Quitar ubicación» sin
+    efecto). El guardado del handle reintenta y, si IndexedDB falla,
+    mantiene la ubicación en memoria para la sesión actual.
+  - El estado de la tarjeta se repinta al momento tras elegir/quitar la
+    ubicación (botones «Quitar ubicación» y «Cargar desde el archivo» se
+    activan/desactivan en vivo, sin carreras).
+- **Token visible**: el cuadro del token de GitHub en Administración se
+  muestra en texto claro para poder copiarlo/verificarlo de un vistazo;
+  el ojo lo oculta si lo prefieres.
+- **Filtro «Entregadas» con dinero cobrado**: al filtrar por Entregadas, una
+  banda arriba de la lista muestra el **total cobrado** entre todas las
+  reparaciones entregadas (precio + recargos ya cobrados), el número de
+  entregadas y el promedio. La lista solo muestra equipos entregados.
+- **Duplicar = reparación nueva reciente**: cada reparación duplicada pasa
+  automáticamente a **estado pendiente** con **fecha actual**, por lo que
+  aparece arriba en «Recientes». El icono de duplicar está en cada tarjeta
+  de la sección de reparaciones y en el detalle.
+
+## v6.5.0 — Notificaciones, duplicado desde la lista y cierre rediseñado
+
+- **Duplicar CUALQUIER reparación**: además del botón en el detalle, cada
+  tarjeta de la lista lleva su propio botón **duplicar**. El **nuevo ID de
+  la copia no se puede eliminar** (queda trazado como duplicado y puede
+  vaciarse editándola, pero el registro se conserva); la original sí se
+  elimina con la confirmación de siempre. El diálogo avisa explícitamente
+  de esta regla antes de crear la copia.
+- **Icono cerrar rediseñado**: sin fondo (transparente, sin sombra ni
+  borde) y más grande (48 px, icono de 30 px): más visible y menos
+  invasivo en los formularios.
+- **Notificación de equipos pendientes**: panel nuevo en el Inicio con el
+  total de equipos por entregar (sin empezar / en proceso / listos) y dos
+  acciones: **Avisarme (notificación)** del sistema y **Avisar por
+  WhatsApp** al pendiente más antiguo con teléfono.
+- **Notificaciones tipo push y por mensaje**: motor `notify.js` que
+  avisa por los tres canales para **equipos con más de 30 días en el
+  taller** y **sin devolución (más de 60 días)**:
+  1. *Notificación del sistema* (Notification API a través del Service
+     Worker: suena y aparece como las push reales con la PWA instalada;
+     tocarla abre la app). Se pide el permiso al entrar y se dispara al
+     abrir la app y tras cada bajada de datos desde la nube.
+  2. *Mensaje de WhatsApp* (wa.me) con texto listo para el cliente, por
+     equipo en las listas del Resumen y en el panel del Inicio.
+  3. *Anti-spam*: cada aviso se firma y no se repite hasta que cambie
+     (más días) o pasen 3 días; respeta los descartes manuales del Resumen.
+- **Arreglo de datos**: `createdAt` explícito se respeta al registrar
+  (importaciones/tests ya no nacen «hoy»).
 
 ## v6.4.0 — Duplicar reparaciones y Pendientes
 

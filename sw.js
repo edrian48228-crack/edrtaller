@@ -14,12 +14,12 @@
 // - v53: precarga los .min (producción); index.html ya los
 //   referencia con ?v=53.
 // =============================================================
-const CACHE = 'taller-v63';
-const VERSION = '63';
+const CACHE = 'taller-v66';
+const VERSION = '66';
 const ASSETS = [
   './','./index.html','./manifest.json',
   './css/styles.min.css',
-  './js/db.min.js','./js/sync.min.js','./js/auth.min.js','./js/install.min.js','./js/ui.min.js','./js/views.min.js','./js/app.min.js',
+  './js/db.min.js','./js/sync.min.js','./js/auth.min.js','./js/install.min.js','./js/ui.min.js','./js/views.min.js','./js/notify.min.js','./js/app.min.js',
   './icons/icon-192.png','./icons/icon-512.png',
   './icons/maskable-192.png','./icons/maskable-512.png',
   './icons/favicon-32.png',
@@ -54,6 +54,32 @@ self.addEventListener('message', e=>{
     // Responde al cliente qué versión está activa.
     e.source && e.source.postMessage({type:'VERSION', v:VERSION});
   }
+  // v64 — notificaciones tipo push desde la página (notify.js): el
+  // Service Worker las muestra como notificaciones del sistema/OS,
+  // el único canal que en Android suena y aparece fuera del navegador
+  // cuando la PWA está instalada.
+  if (e.data && e.data.type === 'NOTIFY'){
+    const { title, body, tag } = e.data;
+    try{
+      self.registration.showNotification(title || 'Taller', {
+        body: body || '',
+        tag: tag || 'taller',
+        icon: 'icons/icon-192.png',
+        badge: 'icons/icon-96.png',
+        vibrate: [180,90,180]
+      });
+    }catch(_){ /* noop */ }
+  }
+});
+
+// v64 — tocar una notificación abre (o enfoca) la app del taller
+self.addEventListener('notificationclick', e=>{
+  e.notification.close();
+  e.waitUntil((async ()=>{
+    const winList = await self.clients.matchAll({ type:'window', includeUncontrolled:true });
+    for(const w of winList){ if('focus' in w){ w.focus(); return; } }
+    try{ await self.clients.openWindow('index.html'); }catch(_){}
+  })());
 });
 
 // Network-first para HTML/JS/CSS — siempre ves los cambios; cae a cache si offline
