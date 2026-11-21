@@ -3,7 +3,7 @@
   "schema": 1,
   "schemaVersion": 10,
   "counter": 18,
-  "txCounter": 13,
+  "txCounter": 14,
   "pendCounter": 2,
   "settings": {
     "appName": "TallerEDR",
@@ -100,6 +100,21 @@
     "githubSharedAt": 1795108799716
   },
   "transactions": [
+    {
+      "type": "sale",
+      "product": "Mica protectora",
+      "quantity": 1,
+      "unitPrice": 1200,
+      "unitCost": 600,
+      "costTotal": 600,
+      "total": 1200,
+      "date": 1795280400000,
+      "counterparty": "Comprador",
+      "notes": "Venta de mica",
+      "id": "T0013-K1B8",
+      "createdAt": 1795277412867,
+      "updatedAt": 1795277412867
+    },
     {
       "type": "sale",
       "product": "Mica",
