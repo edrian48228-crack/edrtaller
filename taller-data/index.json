@@ -314,7 +314,6 @@
   "suppliers": [],
   "supplierCounter": 1,
   "repairIds": [
-    "R0017-K1B8",
     "R0001-K1B8",
     "R0003-K1B8",
     "R0003",
@@ -341,6 +340,7 @@
     "R0014-K1B8",
     "R0015-K1B8",
     "R0016-K1B8",
+    "R0017-K1B8",
     "R0023-EB5K",
     "R0030-EB5K",
     "R0031-EB5K",
