@@ -127,20 +127,22 @@ input,select,textarea{font-family:inherit;font-size:16px;max-width:100%}
 .icon-btn-sm .ico{width:18px;height:18px}
 .icon-btn-sm:hover{color:#ff6b6b}
 
-/* Botón cerrar flotante (en formulario nueva reparación)
-   v64 — SIN fondo (transparente) y MÁS GRANDE: antes era un círculo negro
-   de 40px con blur; ahora es un botón limpio de 48px sin fondo que flota
-   sobre la vista, más fácil de tocar y menos invasivo. */
+/* Botón cerrar flotante (en formularios: nueva reparación, pendiente,
+   proveedor) — v68: SIN fondo, ROJO pleno, GRANDE y SIN animación
+   (el :active con scale contaba como animación táctil: fuera).
+   v64 era un círculo negro con blur; v66 lo abrió pero con opacity .9
+   y scale al pulsar. Ahora: transparente, #ff4b3e sólido, 52px, 34px
+   de trazo, cero transiciones. */
 .form-close{
   position:fixed;top:calc(env(safe-area-inset-top) + 8px);right:10px;z-index:30;
-  width:48px;height:48px;border-radius:50%;
+  width:52px;height:52px;border-radius:50%;
   background:transparent;backdrop-filter:none;
-  border:none;color:#ff6b6b;cursor:pointer;
+  border:none;color:#ff4b3e;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:none;padding:0;opacity:.9
+  box-shadow:none;padding:0;opacity:1;
+  -webkit-tap-highlight-color:transparent
 }
-.form-close .ico{width:30px;height:30px;stroke-width:1.6}
-.form-close:active{transform:scale(.88);opacity:1}
+.form-close .ico{width:34px;height:34px;stroke-width:2.2}
 
 main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 @media(min-width:600px){ main{padding-top:104px} }
@@ -255,6 +257,8 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 .repair-info .card-phones .mini-action.call{color:#e8c46a;border-color:rgba(232,196,106,.35)}
 .repair-info .card-phones .mini-action.wa{color:#a8e3b3;border-color:rgba(76,201,115,.35)}
 .repair-info .card-phones .mini-action svg{width:11px;height:11px;fill:currentColor}
+/* v68 — el icono de copia usa stroke (no fill): tamaño propio */
+.repair-info .card-phones .mini-action .dup-svg{width:13px;height:13px;fill:none;stroke:currentColor}
 .status{
   font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:4px 8px;border-radius:6px;
   font-weight:700;white-space:nowrap;margin-top:4px;display:inline-block
@@ -498,15 +502,15 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 }
 .modal-scroll{overflow-y:auto;flex:1 1 auto;padding:6px 18px 24px;overscroll-behavior:contain}
 .modal-close{
-  position:static;background:#ff6b5e;border:0;color:#fff;
-  width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  /* v68 — SIN fondo (antes disco rojo sólido), ROJO pleno, GRANDE,
+     SIN animación: ni hover con sombra creciente ni :active con scale. */
+  position:static;background:transparent;border:none;color:#ff4b3e;
+  width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   cursor:pointer;z-index:7;flex:0 0 auto;
-  box-shadow:0 4px 18px rgba(255,107,94,.45),inset 0 1px 0 rgba(255,255,255,.25);
-  transition:transform .15s,box-shadow .15s
+  box-shadow:none;padding:0;
+  -webkit-tap-highlight-color:transparent
 }
-.modal-close .ico{width:26px;height:26px;stroke-width:1.2}
-.modal-close:active{transform:scale(.92)}
-.modal-close:hover{box-shadow:0 6px 24px rgba(255,107,94,.6),inset 0 1px 0 rgba(255,255,255,.25)}
+.modal-close .ico{width:34px;height:34px;stroke-width:2.2}
 @media(min-width:600px){
   .modal{align-items:center;padding:20px}
   .modal-card{border-radius:20px}
@@ -1910,6 +1914,60 @@ html,body{max-width:100%;overflow-x:hidden}
 .cv-period-sub{margin:6px 0 0}
 /* v67 — tarjeta plegada compacta: menos aire alrededor de la cabecera */
 .cv-period{padding:10px 12px}
+
+/* ===== v68 — PROVEEDORES: búsqueda re-hecha + tarjeta encojible ===== */
+/* Barra de búsqueda estilo «Buscar» del taller: lupa integrada a la
+   izquierda, botón × que limpia (solo visible con texto), fondo propio.
+   El input plano anterior (emoji pegado al placeholder) era incómodo:
+   no indicaba que era búsqueda, no se podía limpiar de un toque y el
+   texto se pegaba al borde. */
+.sup-search-bar{
+  position:relative;display:flex;align-items:center;gap:0;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:12px;
+  padding:0 38px 0 12px;margin:0 0 10px;min-width:0
+}
+.sup-search-bar .sup-search-ico{width:18px;height:18px;color:var(--muted);flex:0 0 auto}
+.sup-search-bar input{
+  flex:1 1 auto;min-width:0;background:transparent;border:none;outline:none;
+  color:var(--text);font-size:14.5px;padding:12px 8px
+}
+.sup-search-bar input::placeholder{color:var(--muted)}
+/* quitar el × nativo de type=search (usamos el nuestro, con botón que
+   además repinta la lista) */
+.sup-search-bar input::-webkit-search-cancel-button{-webkit-appearance:none;appearance:none;display:none}
+.sup-search-bar input[type="search"]::-ms-clear{display:none}
+.sup-clear{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;border-radius:50%;border:none;background:transparent;
+  color:var(--muted);font-size:19px;line-height:1;cursor:pointer;
+  display:none;align-items:center;justify-content:center;padding:0
+}
+.sup-clear.show{display:flex}
+.sup-clear:active{color:#ff9b8b}
+/* Tarjeta de proveedores ENCOJIBLE: hereda .collapsible-card y añade
+   acento propio (naranja repuestos) y badge de conteo en la cabecera,
+   visible incluso plegada — así la sección ocupa UNA línea cuando no
+   la necesitas. */
+.sup-collapse .adm-collapse-ico{background:rgba(224,85,85,.12);color:#ff8a7a}
+.sup-count-badge{
+  display:inline-block;margin-left:6px;padding:1px 8px;border-radius:9px;
+  background:rgba(224,85,85,.16);border:1px solid rgba(224,85,85,.3);
+  color:#ffb3ab;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums
+}
+/* v68 — ICONO DUPLICAR visible: antes era un «+» pequeño y verde pálido
+   confundible con el de añadir; ahora botón de copia con trazo completo,
+   tono verde sólido, tamaño mayor y texto «Copiar» al lado.
+   Selector con .card-phones para GANARLE la carrera de especificidad a
+   .repair-info .card-phones .mini-action (que lo pintaba neutro). */
+.card-phones .mini-action.dup{
+  color:#7be29a;border-color:rgba(76,201,115,.5);
+  background:rgba(76,201,115,.14);font-weight:700
+}
+.card-phones .mini-action.dup .dup-ico{display:inline-flex;align-items:center}
+.card-phones .mini-action.dup .dup-svg{width:13px;height:13px;stroke-width:2.2;fill:none;stroke:currentColor}
+.card-phones .mini-action.dup:active{background:rgba(76,201,115,.26)}
+/* Botón «Duplicar» grande del detalle de reparación */
+.btn-secondary .dup-svg{width:16px;height:16px;stroke-width:2}
 
 /* v66 — multi-teléfono en pendientes y proveedores */
 .pend-phone-row{display:flex;gap:6px;margin-bottom:6px;align-items:center}

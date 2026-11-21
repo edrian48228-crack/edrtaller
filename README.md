@@ -1,8 +1,28 @@
-# Taller — PWA de reparaciones (v6.8.0)
+# Taller — PWA de reparaciones (v6.8.1)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## v6.8.1 — Proveedores con búsqueda digna, icono Copiar y cerrar rojo global
+
+- **Búsqueda de proveedores re-hecha**: era un input plano con un emoji
+  pegado al placeholder (pésima). Ahora es una barra de búsqueda de
+  verdad: lupa integrada, botón **× para limpiar de un toque** (solo
+  aparece cuando hay texto, y restaura la lista completa al instante),
+  Enter neutralizado y contador de resultados siempre visible.
+- **Tarjeta de proveedores encojible**: la sección de proveedores de
+  Administración ahora es plegable (una línea plegada, con el conteo en
+  la cabecera) y tiene su **acceso rápido en el menú** de Administración
+  («Proveedores»), que la abre y hace scroll directo hasta ella.
+- **Icono de duplicar mejorado**: el «+» genérico y apenas visible fue
+  reemplazado por el símbolo universal de **copia (dos hojas
+  superpuestas)** en verde sólido con texto «Copiar» en cada tarjeta de
+  reparación, y el mismo icono en el botón «Duplicar» del detalle.
+- **Icono de cerrar global unificado**: en TODO el sistema (formularios
+  de reparación/pendiente/proveedor y el modal de detalle) el botón de
+  cerrar es ahora **sin fondo, rojo pleno (#ff4b3e), grande (52 px, trazo
+  34 px) y sin animación** (ni scale al pulsar ni hover con sombra).
 
 ## v6.8.0 — Portada limpia, avisos solo para demorados, totales que encojen y pendientes ordenados
 

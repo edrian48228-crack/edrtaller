@@ -24,7 +24,8 @@ const Views = (() => {
     upload: '<svg viewBox="0 0 24 24" class="ico"><path d="M9 16V10H5l7-7 7 7h-4v6H9zm-4 4v-2h14v2H5z"/></svg>',
     close: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>',
     cancel: '<svg viewBox="0 0 24 24" class="ico"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm5 14.6L16.6 18 12 13.4 7.4 18 6 16.6 10.6 12 6 7.4 7.4 6 12 10.6 16.6 6 18 7.4 13.4 12 18 16.6z"/></svg>',
-    print: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8v5zm3-7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12V3z"/></svg>'
+    print: '<svg viewBox="0 0 24 24" class="ico"><path d="M19 8H5a3 3 0 0 0-3 3v6h4v4h12v-4h4v-6a3 3 0 0 0-3-3zm-3 11H8v-5h8v5zm3-7a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM18 3H6v4h12V3z"/></svg>',
+    duplicate: '<svg viewBox="0 0 24 24" class="ico dup-svg" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'
   };
 
   const STATUS_KEYS = ['pending','in_progress','completed','delivered','cancelled','no_devolution'];
@@ -75,10 +76,12 @@ const Views = (() => {
         </div>`;
       }
     }
-    // v64 — botón DUPLICAR en cada tarjeta de la lista: duplicar
+    // v68 — botón DUPLICAR en cada tarjeta de la lista: duplicar
     // CUALQUIER reparación directamente desde ahí (mismo flujo con
     // confirmación + selección de datos a vaciar que el detalle).
-    const dupBtn = `<button class="mini-action dup" data-dup-id="${escape(r.id)}" data-stop="1" title="Duplicar reparación" aria-label="Duplicar">${ICONS.plus}</button>`;
+    // Icono NUEVO: dos hojas superpuestas (símbolo universal de «copia»),
+    // reemplaza al «+» genérico que apenas se distinguía de los demás.
+    const dupBtn = `<button class="mini-action dup" data-dup-id="${escape(r.id)}" data-stop="1" title="Duplicar reparación (${escape(r.id)})" aria-label="Duplicar reparación"><span class="dup-ico">${ICONS.duplicate}</span><span>Copiar</span></button>`;
     const delBtn = `<button class="mini-action delete" data-del-id="${escape(r.id)}" data-stop="1" title="Eliminar reparación" aria-label="Eliminar">${ICONS.trash}</button>`;
     const inner = phoneHtml ? phoneHtml.replace(/^<div class="card-phones">/,'').replace(/<\/div>\s*$/,'') : '';
     const actionsRow = `<div class="card-phones bottom-row">${inner}${dupBtn}${delBtn}</div>`;
@@ -1319,7 +1322,7 @@ const Views = (() => {
       <div class="btn-row four">
         <button class="btn-secondary" id="editBtn">${ICONS.edit} Editar</button>
         <button class="btn-secondary" id="ticketBtn">${ICONS.print} Etiqueta</button>
-        <button class="btn-secondary" id="dupBtn" title="Duplicar con ID nuevo">${ICONS.plus} Duplicar</button>
+        <button class="btn-secondary" id="dupBtn" title="Duplicar con ID nuevo"><span class="dup-ico" style="display:inline-flex;vertical-align:-3px">${ICONS.duplicate}</span> Duplicar</button>
         <button class="btn-primary btn-cancel" id="delBtn">${ICONS.trash} Eliminar</button>
       </div>
     `;
@@ -1604,6 +1607,7 @@ const Views = (() => {
       {id:'adm-backup',  t:'Copia manual',    s:'Exportar / importar',    i:ICONS.upload},
       {id:'adm-devices', t:'Equipos',         s:'Catálogo de equipos',    i:ICONS.box},
       {id:'adm-products',t:'Productos',       s:'Piezas y artículos',     i:ICONS.box},
+      {id:'adm-suppliers',t:'Proveedores',    s:'Contactos de repuestos', i:ICONS.box},
       {id:'adm-warranty',t:'Garantía',        s:'Días por defecto',       i:ICONS.check},
       {id:'adm-stats',   t:'Estadísticas',    s:'Ganancia · inversión',   i:ICONS.edit},
       {id:'adm-glossary',t:'Glosario',        s:'Términos del Resumen',   i:ICONS.search},
@@ -1812,18 +1816,28 @@ const Views = (() => {
       </div>
 
       ${typeof DB.suppliers !== 'undefined' ? `
-      <div class="admin-card" id="adm-suppliers">
-        <h3>🧰 Proveedores de piezas</h3>
-        <p>Contactos de donde consigues repuestos: datos completos, varios teléfonos (llamada y SMS), piezas que vende, notas. Se sincronizan con todos los dispositivos.</p>
-        <div class="btn-row" style="margin:0 0 12px">
-          <button class="btn-primary" id="supAddBtn">${ICONS.plus} Nuevo proveedor</button>
+      <details class="admin-card collapsible-card sup-collapse" id="adm-suppliers">
+        <summary>
+          <span class="adm-collapse-title">
+            <span class="adm-collapse-ico sup-ico">${ICONS.box}</span>
+            <span>🧰 Proveedores de piezas <span class="sup-count-badge" id="supCountBadge">${(DB.suppliers||[]).length}</span></span>
+          </span>
+          <span class="adm-collapse-chev" aria-hidden="true">▾</span>
+        </summary>
+        <div class="adm-collapse-body">
+          <p class="muted small" style="margin:0 0 12px">Contactos de donde consigues repuestos: datos completos, varios teléfonos (llamada y SMS), piezas que vende, notas. Se sincronizan con todos los dispositivos.</p>
+          <div class="btn-row" style="margin:0 0 12px">
+            <button class="btn-primary" id="supAddBtn">${ICONS.plus} Nuevo proveedor</button>
+          </div>
+          <div class="sup-search-bar">
+            ${ICONS.search.replace('class="ico"','class="ico sup-search-ico"')}
+            <input id="supSearch" type="search" autocomplete="off" placeholder="Buscar por nombre, empresa, teléfono o pieza…" aria-label="Buscar proveedores">
+            <button type="button" id="supClearBtn" class="sup-clear ${''}" title="Limpiar búsqueda" aria-label="Limpiar búsqueda">×</button>
+          </div>
+          <div id="supList"></div>
+          <p class="muted small" id="supCount" style="margin:8px 0 0"></p>
         </div>
-        <div class="sup-search select-elegant" style="margin-bottom:10px">
-          <input id="supSearch" placeholder="🔍 Buscar por nombre, empresa, teléfono o pieza…" style="width:100%">
-        </div>
-        <div id="supList"></div>
-        <p class="muted small" id="supCount" style="margin:8px 0 0"></p>
-      </div>` : ''}
+      </details>` : ''}
 
       <div class="admin-card" id="adm-products">
         <h3>Productos para ventas y compras</h3>
@@ -2617,16 +2631,34 @@ const Views = (() => {
       UI.toast('Garantía por defecto actualizada');
     });
 
-    // v66 — PROVEEDORES DE PIEZAS: lista con búsqueda en vivo + CRUD.
+    // v68 — PROVEEDORES DE PIEZAS: barra de búsqueda RE-HECHA (antes un
+    // input plano con emoji pegado al placeholder, sin lupa ni botón de
+    // limpiar): ahora es una barra estilo «Buscar» del taller: lupa a la
+    // izquierda, botón × que limpia (y solo aparece cuando hay texto), y
+    // además ABRIMOS el desplegable si el técnico toca el acceso rápido
+    // del menú. La tarjeta entera es encojible (details/summary plegada
+    // por defecto, con el conteo visible en la cabecera).
     const supSearchEl = document.getElementById('supSearch');
     if(supSearchEl){
+      const supClearBtn = document.getElementById('supClearBtn');
+      const supBadge = document.getElementById('supCountBadge');
       const paint = ()=>{
         const q = supSearchEl.value;
+        if(supClearBtn) supClearBtn.classList.toggle('show', !!q);
         const list = DB.searchSuppliers(q);
         renderSuppliersList(list, q);
       };
       supSearchEl.addEventListener('input', paint);
+      if(supClearBtn) supClearBtn.onclick = ()=>{
+        supSearchEl.value = '';
+        supSearchEl.focus();
+        paint();
+      };
+      // Enter no debe re-enviar nada (input suelto dentro de un details)
+      supSearchEl.addEventListener('keydown', e=>{ if(e.key==='Enter') e.preventDefault(); });
       document.getElementById('supAddBtn').onclick = ()=> supplierForm(null);
+      // badge vivo en la cabecera plegada
+      if(supBadge) supBadge.textContent = (DB.suppliers||[]).length;
       paint();
     }
   }
@@ -2687,6 +2719,9 @@ const Views = (() => {
       });
     }
     if(count) count.textContent = list.length + ' proveedor(es)' + (q?' · búsqueda: «'+q+'»':'') + ' · sincronizados con todos los dispositivos';
+    // v68 — mantener vivo el badge de la cabecera (visible plegada)
+    const supBadge = document.getElementById('supCountBadge');
+    if(supBadge) supBadge.textContent = list.length + ((q && list.length !== (DB.suppliers||[]).length) ? '/'+(DB.suppliers||[]).length : '');
   }
 
   // v66 — formulario de proveedor (crear / editar) con multi-teléfono y piezas:
