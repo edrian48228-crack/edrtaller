@@ -17,7 +17,7 @@
     ],
     "clientPhone": "21374816",
     "dueDate": null,
-    "createdAt": 1795108292322,
+    "createdAt": 1795108292000,
     "price": null,
     "deposit": null,
     "warrantyDays": null,
@@ -41,7 +41,7 @@
     ],
     "parts": [],
     "id": "R0016-K1B8",
-    "updatedAt": 1795108292322,
+    "updatedAt": 1795186675197,
     "deliveredAt": null
   }
 }
