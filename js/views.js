@@ -235,21 +235,6 @@ const Views = (() => {
           <div class="row-between"><div>
             <h3>⏱ Equipos demorados en el taller</h3>
             <p>${staleFeeN>0?`<b>${staleFeeN}</b> con recargo acumulándose ($ 100/día tras 15 días en Completada). `:''}${stale30>0?`<b>${stale30}</b> llevan <b>más de 30 días</b> sin entregarse. `:''}${staleND>0?`<b>${staleND}</b> pasaron a <b>sin devolución</b> (60 días). `:''}Ábrelos en <b>Resumen</b> para ver todos los datos.</p>
-            <div class="notify-actions" style="margin-top:10px">
-              <button type="button" class="btn-secondary btn-inline" id="dashNotifBtn" title="Notificación del sistema">${ICONS.bell} Avisarme (notificación)</button>
-              <button type="button" class="btn-secondary btn-inline" id="dashWaBtn" title="Mensaje por WhatsApp">${ICONS.wa} Avisar por WhatsApp</button>
-            </div>
-          </div>${ICONS.clock}</div>
-        </div>` : ''}
-      ${(pending+inProgress+completed)>0 ? `
-        <div class="admin-card" style="border-left:3px solid #e8c46a;background:linear-gradient(90deg,rgba(232,196,106,.08),var(--surface))">
-          <div class="row-between"><div>
-            <h3>🔔 Equipos pendientes en el taller</h3>
-            <p>Tienes <b>${pending+inProgress+completed}</b> equipo(s) pendientes de entrega: <b>${pending}</b> sin empezar, <b>${inProgress}</b> en proceso y <b>${completed}</b> listos para entregar.</p>
-            <div class="notify-actions" style="margin-top:10px">
-              <button type="button" class="btn-secondary btn-inline" data-notif-pend title="Notificación del sistema">${ICONS.bell} Avisarme (notificación)</button>
-              <button type="button" class="btn-secondary btn-inline" data-wa-pend title="Mensaje por WhatsApp">${ICONS.wa} Avisar por WhatsApp</button>
-            </div>
           </div>${ICONS.clock}</div>
         </div>` : ''}
       ${window.__v57_movedCompleted ? `
@@ -287,47 +272,6 @@ const Views = (() => {
     });
     const ds = document.getElementById('dashSort');
     if(ds) ds.addEventListener('change', e=>{ Views._dashSort = e.target.value; dashboard(); });
-    // v64 — botones de notificación (sistema y WhatsApp) del panel demorado:
-    const dn = document.getElementById('dashNotifBtn');
-    if(dn) dn.onclick = async ()=>{
-      if(!window.Notify){ UI.toast('Módulo de notificaciones no cargado'); return; }
-      const p = await Notify.askPermission();
-      if(p !== 'granted'){ UI.toast('Permiso de notificaciones denegado. Actívalo en el navegador.'); return; }
-      // El aviso manual de demorados resume los tres casos:
-      const t = [];
-      if(staleFeeN>0) t.push(`${staleFeeN} con recargo`);
-      if(stale30>0) t.push(`${stale30} >30 días`);
-      if(staleND>0) t.push(`${staleND} sin devolución`);
-      Notify.systemNotify('Equipos demorados en el taller', t.join(' · ') + '. Ábrelos en el Resumen.', 'taller-stale');
-      UI.toast('🔔 Notificación enviada');
-    };
-    const dw = document.getElementById('dashWaBtn');
-    if(dw) dw.onclick = ()=>{
-      // WhatsApp al primer equipo demorado con teléfono (elige el más grave:
-      // sin devolución; luego >30 días).
-      const pick = (staleNow.listND.find(x=>!dismissed(x,'nd'))) || (staleNow.list30.find(x=>!dismissed(x,'s30')));
-      if(!pick){ UI.toast('No hay equipos demorados con teléfono'); return; }
-      Notify.notifyWa(pick, pick.r.status==='no_devolution' ? 'nodev' : 'd30');
-    };
-    const dismissed = (x,w)=> !!(x.r.staleDismissed && x.r.staleDismissed[w]);
-    // v64 — panel de EQUIPOS PENDIENTES: notificación de sistema y mensaje:
-    const npBtn = view().querySelector('[data-notif-pend]');
-    if(npBtn) npBtn.onclick = async ()=>{
-      if(!window.Notify){ UI.toast('Módulo de notificaciones no cargado'); return; }
-      const p = await Notify.askPermission();
-      if(p !== 'granted'){ UI.toast('Permiso de notificaciones denegado. Actívalo en el navegador.'); return; }
-      Notify.systemNotify('Equipos pendientes', `${pending+inProgress+completed} equipo(s) por entregar: ${pending} sin empezar, ${inProgress} en proceso, ${completed} listos.`, 'taller-pend');
-      UI.toast('🔔 Notificación enviada');
-    };
-    const wpBtn = view().querySelector('[data-wa-pend]');
-    if(wpBtn) wpBtn.onclick = ()=>{
-      // WhatsApp al pendiente más antiguo con teléfono:
-      const cands = DB.repairs.filter(r=>['pending','in_progress','completed'].includes(r.status))
-        .sort((a,b)=>(a.createdAt||0)-(b.createdAt||0));
-      const pick = cands.find(r=>(r.clientPhones||[]).filter(Boolean).length || r.clientPhone);
-      if(!pick){ UI.toast('Ningún pendiente tiene teléfono guardado'); return; }
-      Notify.notifyWa({ r: pick, days: Math.floor((Date.now()-(pick.createdAt||Date.now()))/86400000) }, 'pending');
-    };
     bindRepairCards();
   }
 
@@ -3539,20 +3483,24 @@ const Views = (() => {
          <div class="cv-detail-list">${purchaseRows}</div>`
       : `<p class="muted small" style="margin:6px 2px 0">Aún no hay compras registradas.</p>`;
 
-    // v66 — TARJETAS PLEGABLES COMO LAS DEMÁS: la cabecera muestra solo
-    // título + total (una línea); los periodos hoy/semana/mes/año y el
-    // detalle de movimientos viven DENTRO del desplegable → la sección
-    // ocupa mucho menos espacio en pantalla.
+    // v67 — TARJETAS PLEGABLES QUE ENCOGEN DE VERDAD: la cabecera es UNA
+    // sola línea (chevron ▸ · título · total), el conteo de movimientos
+    // pasa al desplegable y el plegado se gobierna con la clase .open
+    // (display) — el atributo hidden era pisado por display:flex y la
+    // tarjeta «plegada» seguía ocupando 400 px (por eso «no encojía»).
+    // Los periodos hoy/semana/mes/año y el detalle de movimientos viven
+    // DENTRO del desplegable.
     const _row = (cls, label, day, week, month, year, total, count, sub, detailsHtml) => `
       <div class="cv-period ${cls}">
-        <button class="cv-period-toggle" data-cvtoggle type="button" aria-expanded="false">
-          <span class="cv-period-head">
+        <button class="cv-period-toggle" data-cvtoggle type="button" aria-expanded="false" title="Desplegar ${label.toLowerCase()}">
+          <span class="cv-period-line">
+            <span class="cv-period-chevron" aria-hidden="true"></span>
             <span class="cv-period-title">${label}</span>
+            <span class="cv-period-count">${count}</span>
             <span class="cv-period-total">$ ${total.toFixed(2)}</span>
           </span>
-          <span class="cv-period-sub">${count} movimiento(s) · <span class="cv-period-more">Desplegar ▾</span></span>
         </button>
-        <div class="cv-period-details" hidden>
+        <div class="cv-period-details">
           <span class="cv-period-grid">
             <span title="${escape(_pi.day)}"><b>Hoy</b>$ ${day.toFixed(2)}</span>
             <span title="${escape(_pi.week)}"><b>Semana</b>$ ${week.toFixed(2)}</span>
@@ -3608,9 +3556,10 @@ const Views = (() => {
         const card = btn.closest('.cv-period');
         const panel = card && card.querySelector('.cv-period-details');
         if(!panel) return;
-        const open = !panel.hasAttribute('hidden');
-        if(open){ panel.setAttribute('hidden',''); btn.setAttribute('aria-expanded','false'); card.classList.remove('open'); }
-        else { panel.removeAttribute('hidden'); btn.setAttribute('aria-expanded','true'); card.classList.add('open'); }
+        // v67 — plegado por CLASE .open (display:none por CSS): el atributo
+        // hidden era pisado por .cv-period-details{display:flex} y no encojía.
+        const open = card.classList.toggle('open');
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
       });
     });
     view().querySelectorAll('.cv-detail-row[data-tx]').forEach(b=>{
@@ -3632,39 +3581,46 @@ const Views = (() => {
     const active = list.filter(p=>!p.done);
     const done = list.filter(p=>p.done);
     const card = (p)=>{
-      // v66 — MULTI-TelÉFONO en pendientes: phones[] (alias phone = [0]).
+      // v67 — MULTI-TelÉFONO en pendientes: phones[] (alias phone = [0]).
       // Cada teléfono muestra su enlace para LLAMAR y su botón SMS directo.
+      // ESTRUCTURA ORDENADA (antes las opciones estaban regadas): una fila
+      // clara ✎ hecho · nombre+fecha · acciones (editar/eliminar) y una
+      // zona inferior agrupada por QUÉ: teléfonos (llamada+SMS juntos por
+      // número) · dirección · detalles.
       const phones = (Array.isArray(p.phones) && p.phones.length ? p.phones : (p.phone?[p.phone]:[])).filter(Boolean);
       const dateStr = p.date ? fmtDate(p.date) : '—';
       const overdue = p.date && !p.done && p.date < Date.now();
+      const phonesHtml = phones.length ? `
+        <div class="pend-phones" data-stop="1">
+          ${phones.map(ph=>{
+            const tel = UI.phoneClean(ph);
+            const sms = UI.phoneSms(ph);
+            return `
+            <div class="pend-phone-item">
+              <a class="phone-link" href="tel:${escape(tel)}" title="Llamar al ${escape(ph)}">${escape(ph)}</a>
+              <a class="mini-action sms" href="sms:${escape(sms)}" data-stop="1" title="SMS al ${escape(ph)}">${ICONS.sms}<span>SMS</span></a>
+            </div>`;
+          }).join('')}
+        </div>` : '';
       return `
       <div class="pend-card ${p.done?'done':''} ${overdue?'overdue':''}" data-pend-id="${escape(p.id)}">
         <div class="pend-row">
           <button type="button" class="pend-check" title="${p.done?'Reabrir':'Marcar hecho'}" aria-label="Marcar">${p.done?'↺':'✓'}</button>
           <div class="pend-info">
             <h3>${escape(p.name||'Sin nombre')}</h3>
-            <p class="muted small">${dateStr}</p>
-            ${phones.length ? `
-            <div class="card-phones">
-              ${phones.map(ph=>{
-                const tel = UI.phoneClean(ph);
-                const sms = UI.phoneSms(ph);
-                return `
-                <a class="phone-link" href="tel:${escape(tel)}">${escape(ph)}</a>
-                <a class="mini-action sms" href="sms:${escape(sms)}" data-stop="1" title="SMS a ${escape(ph)}">${ICONS.sms}<span>SMS</span></a>`;
-              }).join('')}
-            </div>` : ''}
+            <p class="muted small">${overdue?'⚠ Vencida · ':''}${dateStr}</p>
           </div>
           <div class="pend-actions">
-            <button type="button" class="pend-act" data-act="edit" title="Editar">${ICONS.edit}</button>
-            <button type="button" class="pend-act danger" data-act="del" title="Eliminar">${ICONS.trash}</button>
+            <button type="button" class="pend-act" data-act="edit" title="Editar pendiente">${ICONS.edit}</button>
+            <button type="button" class="pend-act danger" data-act="del" title="Eliminar pendiente">${ICONS.trash}</button>
           </div>
         </div>
-        ${(p.address || p.details) ? `
+        ${phonesHtml || p.address || p.details ? `
         <div class="pend-extra">
+          ${phonesHtml}
           ${p.address?`<p class="muted small">📍 ${escape(p.address)}</p>`:''}
           ${p.details?`<p class="muted small">📝 ${escape(p.details)}</p>`:''}
-        </div>`:''}
+        </div>` : ''}
       </div>`;
     };
     view().innerHTML = `
@@ -3735,19 +3691,22 @@ const Views = (() => {
       <button type="button" class="form-close" id="formCloseTop" title="Cerrar">${ICONS.close}</button>
       <h2 style="margin:0 0 16px;font-size:20px;padding-right:50px">${existing?'Editar pendiente':'Nuevo pendiente'}</h2>
       <form id="pendingFormEl" novalidate>
+        ${sectionDivider('Quién')}
         <div class="form-group">
           <label>Nombre *</label>
           <input name="name" required autocapitalize="words" value="${escape(p.name||'')}" placeholder="Quién o qué">
         </div>
         <div class="form-group">
-          <label>Teléfonos <span class="muted small">(varios: SMS a cada uno desde la lista)</span></label>
+          <label>Teléfonos <span class="muted small">(varios: llamada y SMS a cada uno desde la lista)</span></label>
           <div id="pendPhonesBox">${initPhones.map((ph,i)=>phoneField(i,ph)).join('')||phoneField(0,'')}</div>
           <button type="button" class="btn-secondary btn-inline" id="pendAddPhone" style="margin-top:6px">${ICONS.plus} Añadir teléfono</button>
         </div>
+        ${sectionDivider('Cuándo')}
         <div class="form-group">
           <label>Fecha</label>
           <input name="date" type="date" value="${p.date?fmtDateInput(p.date):''}">
         </div>
+        ${sectionDivider('Dónde y qué')}
         <div class="form-group">
           <label>Dirección</label>
           <textarea name="address" rows="2" placeholder="Dónde">${escape(p.address||'')}</textarea>

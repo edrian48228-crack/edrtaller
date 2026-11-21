@@ -1,8 +1,34 @@
-# Taller — PWA de reparaciones (v6.7.0)
+# Taller — PWA de reparaciones (v6.8.0)
 
 Aplicación web instalable (PWA) para gestionar reparaciones electrónicas.
 Solo HTML, CSS, JavaScript y JSON. Sin backend ni dependencias: GitHub
 es tu servidor de datos.
+
+## v6.8.0 — Portada limpia, avisos solo para demorados, totales que encojen y pendientes ordenados
+
+- **Portada sin botones de aviso**: los botones «Avisarme (notificación)» y
+  «Avisar por WhatsApp» que estaban en la pantalla de inicio se quitaron;
+  la portada queda limpia con el resumen de texto y los contadores.
+- **Avisos automáticos SOLO para demorados (regla del taller)**: las
+  notificaciones automáticas al entrar se disparan únicamente para
+  **equipos sin devolución** y **equipos con más de 30 días en estado
+  Completado** (el mismo cálculo del Resumen). Los pendientes/en proceso
+  ya no generan avisos automáticos. Los botones por equipo (WhatsApp y
+  notificación) siguen disponibles en las listas del Resumen.
+- **Total de ventas / Total de compras ahora ENCOGEN de verdad**: causa
+  raíz corregida — la regla CSS `display:flex` pisaba el atributo `hidden`
+  del navegador, así que la tarjeta «plegada» seguía ocupando ~400 px.
+  Ahora el plegado se gobierna con la clase `.open` y la cabecera es UNA
+  sola línea (chevron ▸ · título · total): plegada ocupa ~44 px (antes
+  ~400 px) y al tocarla se despliega con los periodos hoy/semana/mes/año
+  y el detalle de cada movimiento.
+- **Pendientes ordenados**: antes las opciones estaban regadas por la
+  tarjeta; ahora cada pendiente tiene una estructura clara: fila superior
+  (✓ hecho · nombre + fecha con aviso de vencida · editar · eliminar) y
+  zona inferior agrupada por teléfono (número para llamar + botón SMS en
+  la misma fila), dirección y detalles. El formulario está organizado en
+  secciones: **Quién** (nombre y teléfonos), **Cuándo** (fecha) y
+  **Dónde y qué** (dirección y detalles).
 
 ## v6.7.0 — Regla de demoras por completado, proveedores, pendientes con SMS y audio ligero
 

@@ -1,16 +1,18 @@
 // ============================================================
-// v64 — notify.js — MOTOR DE NOTIFICACIONES DEL TALLER
+// v67 — notify.js — MOTOR DE NOTIFICACIONES DEL TALLER
 // Tres canales, con permiso y preferencias por tipo:
 //  A) Notificación del sistema (Notification API + Service Worker):
 //     tipo push real en el móvil/PC, funciona con la app abierta y,
 //     con la PWA instalada, también llega cuando el navegador la
 //     re-despierta (evento periodicSync/sw message).
-//  B) Mensaje directo (WhatsApp): botón en cada aviso y en el resumen
-//     del taller; usa wa.me con el teléfono del cliente.
+//  B) Mensaje directo (WhatsApp): botón en cada aviso del Resumen;
+//     usa wa.me con el teléfono del cliente.
 //  C) Aviso interno (toast + tarjeta en el Resumen) siempre visible
 //     aunque el permiso de notificaciones esté denegado.
-// Dispara para: equipos PENDIENTES (por recoger/activos), equipos
-// >30 días en el taller y equipos SIN DEVOLUCIÓN (>60 días).
+// v67 — REGLA DEL TALLER: las notificaciones automáticas SOLO se
+// disparan para equipos SIN DEVOLUCIÓN y equipos MÁS DE 30 DÍAS en
+// estado COMPLETADO (mismo cálculo que el Resumen). Los equipos
+// pendientes/en proceso NO generan avisos automáticos.
 // Anti-spam: cada aviso se firma en localStorage y no se repite
 // hasta que cambie (más días, otro estado) o pasen 3 días.
 // ============================================================
@@ -18,7 +20,6 @@
   const LS_KEY = 'taller_notified_v1';
   const REPEAT_DAYS = 3;          // re-avisar a los 3 días si sigue igual
   const TYPES = {
-    pending:  { title:'Equipos pendientes',  icon:'🔔' },
     d30:      { title:'Equipo más de 30 días', icon:'⏰' },
     nodev:    { title:'Equipo sin devolución', icon:'🚨' }
   };
@@ -88,36 +89,27 @@
     const who = r.clientName || 'cliente';
     const dev = [r.device, r.brand, r.model].filter(Boolean).join(' ') || 'equipo';
     const id = r.id;
-    if(which === 'pending'){
-      return `Hola ${who}, su ${dev} (orden ${id}) está pendiente en el taller. Le avisamos para que esté al tanto. Saludos.`;
-    }
     if(which === 'd30'){
       return `Hola ${who}, su ${dev} (orden ${id}) lleva más de ${item.days} días en nuestro taller. Le invitamos a pasar por él para coordinar la entrega. Saludos.`;
     }
     return `Hola ${who}, su ${dev} (orden ${id}) lleva más de ${item.days} días en el taller sin haber sido recogido. Por favor coordine con nosotros para su entrega o disposición. Saludos.`;
   }
   function notifyWa(item, which){
+    // v67 — which solo puede ser 'd30' o 'nodev' (pendientes no avisan):
+    const w = (which === 'nodev') ? 'nodev' : 'd30';
     const phones = (r2 => ((r2.clientPhones||[]).filter(Boolean).length ? r2.clientPhones.filter(Boolean) : (r2.clientPhone ? [r2.clientPhone] : [])))(item.r);
     if(!phones.length){ UI.toast('Este cliente no tiene teléfono guardado'); return; }
-    const url = waLink(phones[0], messageFor(item, which));
+    const url = waLink(phones[0], messageFor(item, w));
     window.open(url, '_blank');
   }
 
   // ---------- Motor: calcula y dispara ----------
-  // Devuelve { pending:[{r,days}], d30:[…], nodev:[…], fired:bool }
+  // Devuelve { d30:[…], nodev:[…], fired:bool }
+  // v67 — SOLO equipos sin devolución y >30 días en estado COMPLETADO
+  // (el mismo staleCompute del Resumen). Sin avisos de pendientes.
   function scan(){
     const st = (DB.staleCompute ? DB.staleCompute() : { list30:[], listND:[], fee30:[] });
-    const out = {
-      pending: [], d30: st.list30 || [], nodev: st.listND || []
-    };
-    // Equipos pendientes: activos sin entregar (pendiente/en proceso/completada)
-    for(const r of DB.repairs){
-      if(r.status==='pending' || r.status==='in_progress' || r.status==='completed'){
-        const days = Math.floor((Date.now()-(r.createdAt||Date.now()))/86400000);
-        out.pending.push({ r, days });
-      }
-    }
-    return out;
+    return { d30: st.list30 || [], nodev: st.listND || [] };
   }
 
   let lastScan = null;
@@ -144,7 +136,7 @@
     for(const item of out.nodev) if(!dismissed(item,'nd') && shouldFire(item,'nodev')) fired.push(fireOne(item,'nodev'));
     for(const item of out.d30)   if(!dismissed(item,'s30') && shouldFire(item,'d30'))   fired.push(fireOne(item,'d30'));
     if(fired.length && o.toast !== false){
-      UI.toast(`🔔 ${fired.length} aviso(s) de equipos sin recoger`, 2600);
+      UI.toast(`🔔 ${fired.length} aviso(s): equipo(s) sin recoger (>30 días / sin devolución)`, 2600);
     }
     return Promise.resolve({ ...out, fired, firedCount });
   }
