@@ -617,10 +617,16 @@ main{padding:96px 16px 110px;max-width:720px;margin:0 auto;width:100%}
 }
 .img-viewer .iv-close{
   position:absolute;top:max(16px,env(safe-area-inset-top));right:16px;
-  width:52px;height:52px;border-radius:50%;background:#ff6b5e;
-  border:1px solid rgba(255,255,255,.35);color:#fff;font-size:26px;font-weight:700;
+  /* v68 — mismo estándar global de cierre: SIN fondo, ROJO pleno,
+     grande (52px) y sin animación */
+  width:52px;height:52px;border-radius:50%;background:transparent;
+  border:none;color:#ff4b3e;font-size:34px;font-weight:700;
+  /* sombra suave solo para legibilidad SOBRE fotos blancas (no es
+     animación ni fondo: es contraste del trazo) */
+  text-shadow:0 1px 6px rgba(0,0,0,.55);
   cursor:pointer;display:flex;align-items:center;justify-content:center;
-  box-shadow:0 4px 18px rgba(255,107,94,.5)
+  box-shadow:none;padding:0;
+  -webkit-tap-highlight-color:transparent
 }
 .img-viewer .iv-prev,.img-viewer .iv-next{
   position:absolute;top:50%;transform:translateY(-50%);
