@@ -10,7 +10,7 @@
     "model": "9c",
     "serial": null,
     "issue": "Los sensores en mal estado sulfatado ; se apagaba la pantalla al llamar ",
-    "status": "completed",
+    "status": "delivered",
     "notes": null,
     "clientPhones": [],
     "clientPhone": null,
@@ -35,7 +35,7 @@
     ],
     "parts": [],
     "id": "R0010-K1B8",
-    "updatedAt": 1795046456253,
-    "deliveredAt": null
+    "updatedAt": 1795221328691,
+    "deliveredAt": 1795221328691
   }
 }
