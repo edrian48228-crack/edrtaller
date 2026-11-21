@@ -10,7 +10,7 @@
     "model": "011",
     "serial": null,
     "issue": "Puerto de carga .cambio ",
-    "status": "completed",
+    "status": "delivered",
     "notes": null,
     "clientPhones": [
       "54069456"
@@ -32,8 +32,8 @@
     ],
     "parts": [],
     "id": "R0006-K1B8",
-    "updatedAt": 1794931912823,
-    "deliveredAt": null,
+    "updatedAt": 1795221358649,
+    "deliveredAt": 1795221358649,
     "clientPhotos": []
   }
 }
