@@ -2,13 +2,13 @@
   "kind": "index",
   "schema": 1,
   "schemaVersion": 10,
-  "counter": 17,
-  "txCounter": 12,
-  "pendCounter": 1,
+  "counter": 18,
+  "txCounter": 13,
+  "pendCounter": 2,
   "settings": {
-    "appName": "Taller",
+    "appName": "TallerEDR",
     "logo": null,
-    "logoPreset": "tools",
+    "logoPreset": "shield",
     "requirePassword": false,
     "passwordHash": null,
     "securityQuestions": [],
@@ -73,7 +73,7 @@
       "Tornillos",
       "Webcam"
     ],
-    "defaultWarrantyDays": 30,
+    "defaultWarrantyDays": 7,
     "productMinStock": {},
     "creator": {
       "phone": "",
@@ -100,6 +100,21 @@
     "githubSharedAt": 1795108799716
   },
   "transactions": [
+    {
+      "type": "sale",
+      "product": "Mica",
+      "quantity": 1,
+      "unitPrice": 1200,
+      "unitCost": null,
+      "costTotal": null,
+      "total": 1200,
+      "date": 1795194000000,
+      "counterparty": "Odalis Eresuelo",
+      "notes": "Tecno sprak 2024",
+      "id": "T0012-K1B8",
+      "createdAt": 1795184657962,
+      "updatedAt": 1795184657962
+    },
     {
       "type": "sale",
       "product": "Mica",
@@ -266,13 +281,23 @@
       "updatedAt": 1794860638913
     }
   ],
-  "pendings": [],
+  "pendings": [
+    {
+      "name": "Carlos Adonis Alvarez",
+      "phone": "51460231",
+      "date": 1795280400000,
+      "address": "19 norte entre 4 y 5 oeste. Edif 18. Apto 32c",
+      "details": "Configurara el movil completo . Actualizar whatssap , transfermovil, el zapia con cuenta y todo",
+      "id": "P0001-K1B8",
+      "createdAt": 1795273849251,
+      "updatedAt": 1795273849251
+    }
+  ],
   "repairIds": [
+    "R0017-K1B8",
     "R0001-K1B8",
-    "R0003-8BUP",
     "R0003-K1B8",
     "R0003",
-    "R0004-8BUP",
     "R0004",
     "R0005-K1B8",
     "R0005",
