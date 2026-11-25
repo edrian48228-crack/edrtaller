@@ -372,8 +372,60 @@
       ]
     }
   ],
-  "suppliers": [],
-  "supplierCounter": 1,
+  "suppliers": [
+    {
+      "name": "Vendedor",
+      "company": null,
+      "phones": [
+        "50582599"
+      ],
+      "phone": "50582599",
+      "email": null,
+      "address": null,
+      "parts": [
+        "Pantalla"
+      ],
+      "notes": "5 norte entre 5 y 6 oeste",
+      "id": "PR0003-K1B8",
+      "createdAt": 1795467904633,
+      "updatedAt": 1795467904633
+    },
+    {
+      "name": "Vendedor",
+      "company": null,
+      "phones": [
+        "51206467"
+      ],
+      "phone": "51206467",
+      "email": null,
+      "address": "Luz caballero entre 7 y 8 norte 255 preguntar por Rosi",
+      "parts": [
+        "Cargadores, Cables"
+      ],
+      "notes": null,
+      "id": "PR0002-K1B8",
+      "createdAt": 1795467713340,
+      "updatedAt": 1795467713340
+    },
+    {
+      "name": "Vendedor",
+      "company": "Cargadores, Cables",
+      "phones": [
+        "53392935"
+      ],
+      "phone": "53392935",
+      "email": null,
+      "address": "Mi direccion Emilio Giro y el 6 este Ciudad deportiva",
+      "parts": [
+        "Cargadores, Cables"
+      ],
+      "notes": null,
+      "id": "PR0001-K1B8",
+      "createdAt": 1795467615344,
+      "updatedAt": 1795467615344
+    }
+  ],
+  "supplierCounter": 4,
   "repairIds": [
     "R0001-K1B8",
     "R0003-K1B8",
