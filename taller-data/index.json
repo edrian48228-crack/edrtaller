@@ -4,7 +4,7 @@
   "schemaVersion": 10,
   "counter": 18,
   "txCounter": 14,
-  "pendCounter": 2,
+  "pendCounter": 3,
   "settings": {
     "appName": "RepairPro EDR",
     "logo": null,
@@ -358,6 +358,19 @@
     }
   ],
   "pendings": [
+    {
+      "name": "Lida",
+      "phones": [
+        "58243865"
+      ],
+      "phone": "58243865",
+      "date": 1795626000000,
+      "address": "18 norte y ell 4 oeste. Edif 6 apto 49d",
+      "details": "Poner puerto de tecnospark 2024",
+      "id": "P0002-K1B8",
+      "createdAt": 1795625869003,
+      "updatedAt": 1795625869003
+    },
     {
       "name": "Carlos Adonis Alvarez",
       "phone": "51460231",
