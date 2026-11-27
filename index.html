@@ -1,266 +1,138 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1a1a1a" />
-  <meta name="color-scheme" content="dark" />
-  <title>Taller</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png" />
-  <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <!-- iOS: instalar en pantalla de inicio con aspecto de app nativa -->
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Taller" />
-  <link rel="stylesheet" href="css/styles.min.css?v=68" />
-  <!-- ===== SPLASH v57 (inline: se pinta ANTES de descargar cualquier JS) =====
-       Anillo de progreso circular con trazo REAL que sigue al avance, logo
-       con respiración sutil, brillo de barrido, nombre con subrayado animado
-       y fundido de salida. Solo CSS (rápido de pintar). v61: rediseño más
-       vivo y compacto — el anillo ahora COMPLETA su giro con el progreso
-       real y late mientras carga. -->
-  <style>
-    #edrSplash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:radial-gradient(120% 120% at 50% 0%,#151515 0%,#0d0d0d 55%,#0a0a0a 100%);color:#e8e8e8;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;transition:opacity .38s ease,transform .38s ease}
-    #edrSplash.done{opacity:0;transform:scale(1.02);pointer-events:none}
-    #edrSplash .sp-wrap{position:relative;width:96px;height:96px;display:flex;align-items:center;justify-content:center}
-    #edrSplash .sp-ring{position:absolute;inset:0;border-radius:50%;
-      background:conic-gradient(#e05555 calc(var(--sp,0)*1%),rgba(255,255,255,.08) 0);
-      -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));
-      mask:radial-gradient(farthest-side,transparent calc(100% - 6px),#000 calc(100% - 5px));
-      transition:background .25s ease;animation:sp-beat 1.6s ease-in-out infinite}
-    @keyframes sp-beat{0%,100%{filter:brightness(1)}50%{filter:brightness(1.35)}}
-    #edrSplash .sp-ring::after{content:'';position:absolute;inset:-10px;border-radius:50%;
-      box-shadow:0 0 34px rgba(224,85,85,.28);opacity:0;animation:sp-halo 1.6s ease-in-out infinite}
-    @keyframes sp-halo{50%{opacity:1}}
-    #edrSplash .sp-logo{width:78px;height:78px;border-radius:20px;position:relative;overflow:hidden;background:linear-gradient(145deg,#1f1f1f,#141414);border:1px solid rgba(255,255,255,.09);box-shadow:0 12px 40px rgba(0,0,0,.55),inset 0 1px 0 rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center;color:#e05555}
-    #edrSplash .sp-logo::after{content:'';position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(255,255,255,.16) 50%,transparent 60%);transform:translateX(-120%);animation:sp-shine 2s ease-in-out infinite}
-    @keyframes sp-shine{55%,100%{transform:translateX(120%)}}
-    #edrSplash .sp-logo svg{width:46px;height:46px;animation:sp-pulse 1.6s ease-in-out infinite;filter:drop-shadow(0 2px 10px rgba(224,85,85,.5))}
-    @keyframes sp-pulse{0%,100%{transform:scale(1)}50%{transform:scale(.94)}}
-    #edrSplash .sp-name{font-size:27px;font-weight:800;letter-spacing:.5px;background:linear-gradient(90deg,#fff 40%,#e05555 90%);-webkit-background-clip:text;background-clip:text;color:transparent;position:relative;padding-bottom:8px}
-    #edrSplash .sp-name::after{content:'';position:absolute;left:50%;bottom:0;width:0;height:2.5px;border-radius:2px;background:linear-gradient(90deg,#e05555,#fff);transform:translateX(-50%);animation:sp-underline 1.4s ease-out .25s forwards}
-    @keyframes sp-underline{to{width:74%}}
-    #edrSplash .sp-row{display:flex;align-items:center;gap:10px;margin-top:2px}
-    #edrSplash .sp-msg{font-size:12.5px;color:#a8a8a8;min-height:16px;letter-spacing:.3px}
-    #edrSplash .sp-pct{font-size:11px;font-weight:700;color:#e05555;font-variant-numeric:tabular-nums;letter-spacing:.8px;padding:2px 8px;border-radius:999px;background:rgba(224,85,85,.12);border:1px solid rgba(224,85,85,.3)}
-    #edrSplash .sp-ver{position:absolute;bottom:20px;font-size:10.5px;color:#5a5a5a;letter-spacing:1.5px}
-    @media (prefers-reduced-motion:reduce){#edrSplash .sp-ring,#edrSplash .sp-logo::after,#edrSplash .sp-logo svg,#edrSplash .sp-ring::after,#edrSplash .sp-name::after{animation:none}}
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#10131c"><title>SPRITE LAB 0.2</title>
+<style>
+:root{color-scheme:dark;--bg:#0d1018;--panel:#151a26;--panel2:#1b2231;--line:#2a3447;--text:#f2f5fb;--muted:#9ba8bd;--accent:#8b7cff;--accent2:#35c9ab;--warn:#ffca72;--danger:#ff7f87}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(1100px 550px at 85% -10%,#29244b 0%,transparent 55%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px max(22px,calc((100vw - 1200px)/2));border-bottom:1px solid var(--line);background:#0d1018dd;position:sticky;top:0;z-index:5;backdrop-filter:blur(16px)}.brand{display:flex;align-items:center;gap:12px}.logo{width:42px;height:42px;border-radius:13px;background:linear-gradient(135deg,#9b8cff,#4fd3b6);display:grid;place-items:center;color:#111522;font-weight:950;font-size:20px}.brand strong{display:block;font-size:16px;letter-spacing:.09em}.brand small{color:var(--muted)}.version{color:#c8c0ff;border:1px solid #554b88;background:#292345;padding:5px 10px;border-radius:99px;font-size:12px;font-weight:700}
+main{max-width:1200px;margin:0 auto;padding:32px 22px 70px}.hero{margin:0 0 24px}.eyebrow{color:var(--accent2);font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.hero h1{font-size:clamp(28px,4vw,42px);line-height:1.12;margin:7px 0 9px}.hero p{margin:0;color:var(--muted);max-width:720px}.layout{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{background:linear-gradient(180deg,#171d2a,#131925);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 18px 50px #0002;min-width:0}.panel.full{grid-column:1/-1}.panel-head{display:flex;align-items:center;gap:10px;margin-bottom:16px}.step{width:27px;height:27px;border-radius:9px;display:grid;place-items:center;background:#2c2850;color:#c9c1ff;font-size:12px;font-weight:850}.panel h2{margin:0;font-size:17px}.sub{color:var(--muted);font-size:13px;margin:3px 0 0}.drop{border:1px dashed #46536b;border-radius:14px;min-height:180px;background:#0d121c;display:grid;place-items:center;overflow:hidden;position:relative;text-align:center;padding:18px}.drop img{max-width:100%;max-height:300px;object-fit:contain;display:none}.drop.has-image img{display:block}.drop.has-image .empty{display:none}.empty{color:var(--muted)}.empty b{display:block;color:var(--text);margin:7px 0}.file{display:none}.btn,button{border:0;border-radius:11px;padding:11px 15px;background:var(--accent);color:white;font-weight:750;cursor:pointer;font-size:13px;transition:.15s}.btn:hover,button:hover{filter:brightness(1.09);transform:translateY(-1px)}button:disabled{opacity:.45;cursor:not-allowed;transform:none}.btn.secondary,button.secondary{background:#252e40;color:#e5eafa;border:1px solid #3a465d}.btn.green,button.green{background:#177e6e}.btn.danger{background:#67313d}.actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}.field{margin:14px 0}.field label{display:block;font-size:12px;font-weight:750;color:#c8d1e0;margin-bottom:6px}.field input,.field select,.field textarea{width:100%;background:#0d121c;border:1px solid #354157;border-radius:10px;color:var(--text);padding:11px 12px;font:inherit;outline:none}.field textarea{resize:vertical;min-height:120px}.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.hint{color:var(--muted);font-size:12px}.notice{border:1px solid #655333;background:#2b2417;color:#f4d69f;padding:11px 13px;border-radius:11px;font-size:12px;margin:14px 0}.status{border:1px solid var(--line);border-radius:11px;padding:11px 13px;background:#101622;color:var(--muted);font-size:13px;min-height:44px}.status.ok{border-color:#236d5e;color:#a6ecd9}.status.err{border-color:#7c3c4b;color:#ffc1c5}.status.work{border-color:#6654a1;color:#d0c7ff}.bar{height:6px;background:#293245;border-radius:99px;overflow:hidden;margin-top:10px;display:none}.bar span{height:100%;width:0;display:block;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s}.video-wrap{background:#090c12;border:1px solid var(--line);border-radius:12px;min-height:140px;display:grid;place-items:center;overflow:hidden}.video-wrap video{width:100%;max-height:420px;display:block}.video-wrap .placeholder{padding:35px;color:var(--muted);text-align:center}.grid-preview{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-top:13px}.thumb{background:#0c111a;border:1px solid var(--line);border-radius:8px;aspect-ratio:1;overflow:hidden;display:grid;place-items:center}.thumb img{width:100%;height:100%;object-fit:contain}.download-row{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}.foot{color:#77849a;text-align:center;font-size:11px;margin-top:25px}.tiny{font-size:11px;color:var(--muted)}
+@media(max-width:820px){.layout{grid-template-columns:1fr}.panel.full{grid-column:auto}header{padding:15px 18px}.grid-preview{grid-template-columns:repeat(4,1fr)}}
+</style>
 </head>
 <body>
-  <!-- SPLASH: se oculta desde app.js tras el primer render real -->
-  <div id="edrSplash" aria-hidden="true">
-    <div class="sp-wrap">
-      <div class="sp-ring" id="spRing"></div>
-      <div class="sp-logo">
-        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-          <g fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="32" cy="32" r="26" stroke-opacity=".25"/>
-            <path d="M16 48 L36 28" />
-            <path d="M14 50 a4 4 0 1 1 5 -5" />
-            <path d="M44 22 a8 8 0 1 0 -12 -8 l6 6 -4 4 -6 -6 a8 8 0 0 0 12 8 z" fill="currentColor" fill-opacity=".2"/>
-            <path d="M50 14 L30 34" />
-            <path d="M52 12 l4 4 -4 4 -4 -4 z" fill="currentColor" fill-opacity=".3"/>
-          </g>
-        </svg>
-      </div>
-    </div>
-    <div class="sp-name">Taller</div>
-    <div class="sp-row">
-      <span class="sp-msg" id="spMsg">Preparando almacenamiento…</span>
-      <span class="sp-pct" id="spPct">0%</span>
-    </div>
-    <div class="sp-ver">EDR · v68</div>
-  </div>
-  <!-- LOGIN -->
-  <section id="loginScreen" class="login-screen hidden">
-    <div class="login-card">
-      <div class="logo-circle" id="loginLogo"></div>
-      <h1 id="loginTitle" class="brand-name">Taller</h1>
-      <p class="muted">Acceso del técnico</p>
-      <div class="pwd-wrap">
-        <input type="password" id="loginPass" placeholder="Contraseña" autocomplete="current-password" />
-        <button type="button" class="pwd-eye" data-pwd-toggle aria-label="Mostrar contraseña">
-          <svg viewBox="0 0 24 24" class="ico eye-on"><path d="M12 5c-7 0-11 7-11 7s4 7 11 7 11-7 11-7-4-7-11-7zm0 12a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 1 0-6z"/></svg>
-          <svg viewBox="0 0 24 24" class="ico eye-off"><path d="M2 4.3L3.3 3l18 18-1.3 1.3-3-3A12 12 0 0 1 12 20C5 20 1 13 1 13a17 17 0 0 1 4.4-5.1L2 4.3zM12 8a5 5 0 0 1 5 5c0 .7-.1 1.3-.4 1.9l-2-2A3 3 0 0 0 12 10c-.3 0-.6 0-.9.1l-2-2C9.7 8 10.8 8 12 8zm0-3c7 0 11 7 11 7a17 17 0 0 1-3.2 4l-1.4-1.4A14 14 0 0 0 21 13s-3.5-6-9-6c-.8 0-1.5.1-2.2.3L8.3 5.9C9.5 5.3 10.7 5 12 5z"/></svg>
-        </button>
-      </div>
-      <button class="btn-primary" id="loginBtn">Entrar</button>
-      <button type="button" id="forgotBtn" class="forgot-link">¿Olvidaste tu contraseña?</button>
-      <p id="loginError" class="err hidden">Contraseña incorrecta</p>
-    </div>
-    <footer class="credit">
-      <svg viewBox="0 0 24 24" class="crown"><path d="M3 18h18v2H3zm0-2l2-9 4 4 3-7 3 7 4-4 2 9H3z"/></svg>
-      <span>Creado por <b>Edrian Cruz Down</b></span>
-    </footer>
-  </section>
-
-  <!-- APP -->
-  <div id="app" class="hidden">
-    <header class="topbar">
-      <div class="topbar-main">
-        <div class="brand-block">
-          <div class="brand-row">
-            <div class="brand-logo" id="appLogo"></div>
-            <h1 id="appTitle" class="brand-name">Taller</h1>
-          </div>
-          <div class="creator-row">
-            <div class="creator-left">
-              <svg viewBox="0 0 24 24" class="crown"><path d="M3 18h18v2H3zm0-2l2-9 4 4 3-7 3 7 4-4 2 9H3z"/></svg>
-              <span>Creado por <b>Edrian Cruz Down</b></span>
-            </div>
-            <div class="creator-right" id="creatorContacts"></div>
-          </div>
-        </div>
-        <div class="topbar-actions">
-          <button class="icon-btn" id="headerPendBtn" title="Pendientes" aria-label="Pendientes">
-            <svg viewBox="0 0 24 24" class="ico"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
-            <span class="pend-badge" id="pendBadge" hidden></span>
-          </button>
-          <button class="icon-btn" id="headerSearchBtn" title="Buscar" aria-label="Buscar">
-            <svg viewBox="0 0 24 24" class="ico"><path d="M21 20l-5.6-5.6a8 8 0 1 0-1.4 1.4L19.6 21.4 21 20zM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0z"/></svg>
-          </button>
-          <button class="icon-btn" id="logoutBtn" title="Salir">
-            <svg viewBox="0 0 24 24" class="ico"><path d="M10 17l-1.4-1.4 2.6-2.6H3v-2h8.2L8.6 8.4 10 7l5 5-5 5zm10 2H12v-2h8V5h-8V3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2z"/></svg>
-          </button>
-        </div>
-      </div>
-    </header>
-
-    <main id="view"></main>
-
-    <nav class="tabbar">
-      <button class="tab active" data-view="dashboard">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
-        <span>Inicio</span>
-      </button>
-      <button class="tab" data-view="repairs">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M22 7l-5-5-3 3 5 5 3-3zM2 22l8.5-8.5 2.5 2.5L4.5 24.5 2 22zm10-10l5 5L7 27H2v-5l10-10z"/></svg>
-        <span>Reparaciones</span>
-      </button>
-      <button class="tab" data-view="search" aria-label="Buscar">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M21 20l-5.6-5.6a8 8 0 1 0-1.4 1.4L19.6 21.4 21 20zM4 10a6 6 0 1 1 12 0 6 6 0 0 1-12 0z"/></svg>
-        <span>Buscar</span>
-      </button>
-      <span class="tab tab-spacer" aria-hidden="true"></span>
-      <button class="tab fab-tab" data-view="chooser" aria-label="Agregar">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-      </button>
-      <button class="tab" data-view="summary">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M5 9.2h3v9H5v-9zm5.5-5h3v14h-3v-14zM16 13h3v5.2h-3V13z"/></svg>
-        <span>Resumen</span>
-      </button>
-      <button class="tab" data-view="sales">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M7 18a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm10 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zM7.2 14.6l.9-1.6h7.5a2 2 0 0 0 1.8-1.1l3.2-6.1L18.8 5l-3.2 6H8.5L4.3 2H1v2h2l3.6 7.6-1.4 2.5C4.5 15.4 5.4 17 6.9 17H19v-2H7.4l-.2-.4z"/></svg>
-        <span>Comp/Vent</span>
-      </button>
-      <button class="tab" data-view="admin">
-        <svg viewBox="0 0 24 24" class="ico"><path d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-1.7-1l-.4-2.5h-4l-.4 2.5a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.5 7.5 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg>
-        <span>Admin</span>
-      </button>
-    </nav>
-  </div>
-
-  <!-- Modal — v57: cabecera fija propia (el botón CERRAR siempre visible
-       al hacer scroll, grande y rojo) + cuerpo scrolleable por separado -->
-  <div id="modal" class="modal hidden">
-    <div class="modal-card">
-      <div class="modal-head">
-        <button class="modal-close" id="modalClose" aria-label="Cerrar ventana">
-          <svg viewBox="0 0 24 24" class="ico"><path d="M19 6.4L17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
-        </button>
-      </div>
-      <div class="modal-scroll"><div id="modalBody"></div></div>
-    </div>
-  </div>
-
-  <div id="toast" class="toast hidden"></div>
-
-  <script src="js/db.min.js?v=68"></script>
-  <script src="js/sync.min.js?v=68"></script>
-  <script src="js/auth.min.js?v=68"></script>
-  <!-- v53: PWA no es crítico para el primer render → defer (no bloquea) -->
-  <script src="js/install.min.js?v=68" defer></script>
-  <script src="js/ui.min.js?v=68"></script>
-  <script src="js/views.min.js?v=68"></script>
-  <script src="js/notify.min.js?v=68" defer></script>
-  <script src="js/app.min.js?v=68"></script>
-  <script>
-    // ====== Service Worker + auto-actualización (v40) ======
-    // La app se actualiza sola: al abrir, al recuperar conexión, al
-    // volver al primer plano (lo típico en móvil) y cada 6 h con la app
-    // abierta. El SW nuevo se activa de inmediato (SKIP_WAITING), borra
-    // la caché vieja, recarga y muestra el aviso de versión nueva.
-    (function(){
-      if (!('serviceWorker' in navigator)) return;
-      var hadController = !!navigator.serviceWorker.controller;
-      var reloaded = false;
-
-      navigator.serviceWorker.addEventListener('controllerchange', function(){
-        // Solo recarga si este documento YA estaba controlado por un SW
-        // anterior (evita el flash de la primera instalación) y no está
-        // en medio de rellenar un formulario.
-        if (reloaded || !hadController) return;
-        var busy = document.querySelector('.modal:not(.hidden) form, .form-sheet:not(.hidden) form, form.dirty');
-        if (busy){
-          try{ UI.toast('✓ Nueva versión descargada. Se aplicará al cerrar esta pantalla.'); }catch(_){}
-          return;
-        }
-        reloaded = true;
-        try{ UI.toast('⟳ Nueva versión — actualizando…'); }catch(_){}
-        setTimeout(function(){ location.reload(); }, 700);
-      });
-
-      window.addEventListener('load', function(){
-        var regPromise = navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(function(reg){
-          if (reg.waiting && navigator.serviceWorker.controller) reg.waiting.postMessage('SKIP_WAITING');
-          reg.addEventListener('updatefound', function(){
-            var nw = reg.installing;
-            if (!nw) return;
-            nw.addEventListener('statechange', function(){
-              if (nw.state === 'installed' && navigator.serviceWorker.controller) nw.postMessage('SKIP_WAITING');
-            });
-          });
-          return reg;
-        }).catch(function(){ return null; });
-        regPromise.then(function(reg){ if (reg) reg.update(); });
-
-        function checkForUpdate(reg){ if (reg) reg.update(); }
-        // Sondeo: al recuperar red / al volver al primer plano / cada 6 h
-        window.addEventListener('online', function(){ regPromise.then(checkForUpdate); });
-        document.addEventListener('visibilitychange', function(){
-          if (document.visibilityState === 'visible') regPromise.then(checkForUpdate);
-        });
-        setInterval(function(){ regPromise.then(checkForUpdate); }, 6*60*60*1000);
-
-        // Aviso "actualizada": compara la versión del SW activo con la
-        // última que vio este dispositivo (localStorage).
-        var tries = 0;
-        function checkVersion(){
-          var sw = navigator.serviceWorker.controller;
-          if (!sw){
-            if (++tries < 5) setTimeout(checkVersion, 1500);
-            return;
-          }
-          var seen = null;
-          try{ seen = localStorage.getItem('edr_sw_v'); }catch(_){}
-          var onv = function(e){
-            if (!e.data || e.data.type !== 'VERSION') return;
-            navigator.serviceWorker.removeEventListener('message', onv);
-            if (e.data.v && seen && String(seen) !== String(e.data.v)){
-              try{ UI.toast('✓ App actualizada a la versión ' + e.data.v); }catch(_){}
-            }
-            try{ localStorage.setItem('edr_sw_v', String(e.data.v)); }catch(_){}
-          };
-          navigator.serviceWorker.addEventListener('message', onv);
-          sw.postMessage('GET_VERSION');
-        }
-        checkVersion();
-      });
-    })();
-  </script>
-</body>
-</html>
+<header><div class="brand"><div class="logo">S</div><div><strong>SPRITE LAB</strong><small>Imagen → vídeo → spritesheet</small></div></div><span class="version">VERSIÓN 0.2 · REBUILD</span></header>
+<main>
+<section class="hero"><div class="eyebrow">Studio ProOne · herramienta de animación 2D</div><h1>Convierte personajes en movimiento.</h1><p>Prepara una animación con IA, importa el vídeo y extrae fotogramas para construir una hoja de sprites. La extracción y composición se hacen en tu navegador.</p></section>
+<div class="layout">
+<section class="panel">
+ <div class="panel-head"><span class="step">01</span><div><h2>Imagen del personaje</h2><p class="sub">Carga tu PNG maestro o una imagen de Tuki.</p></div></div>
+ <div class="drop" id="imageDrop"><div class="empty">▧<b>Selecciona la imagen de tu personaje</b><span class="hint">PNG, JPG o WebP · máximo 10 MB</span><div class="actions" style="justify-content:center"><button id="chooseImage">Elegir imagen</button></div></div><img id="imagePreview" alt="Vista previa del personaje"></div>
+ <input class="file" id="imageFile" type="file" accept="image/png,image/jpeg,image/webp">
+ <div class="field"><label for="characterName">Nombre del personaje</label><input id="characterName" value="Tuki" maxlength="60"></div>
+ <div class="field"><label for="prompt">Instrucciones para la animación</label><textarea id="prompt">Preserve the exact character identity, face, body proportions, dark brown skin, large red nose, expressive bulging eyes, torn shirt, blue shorts and red shoes. Tuki holds a banana, looks at it curiously, brings it to his mouth, takes an exaggerated bite, opens his eyes in surprise and finishes with a very funny over-the-top reaction. Smooth fluid 2D cartoon motion, consistent character design, full body visible and centered, static camera, clean simple background, no extra characters, no cuts, no camera movement, no redesign.</textarea><div class="hint">Puedes cambiar la acción y mantener los rasgos del personaje.</div></div>
+ <div class="row2"><div class="field"><label for="model">Motor</label><select id="model"><option value="ltx-2.5">LTX 2.5 · movimiento general</option><option value="wan-2.2">WAN 2.2 · acción física</option></select></div><div class="field"><label for="duration">Duración</label><select id="duration"><option value="5">5 segundos</option></select></div></div>
+ <div class="field"><label for="resolution">Resolución</label><select id="resolution"><option value="480p">480p · perfil inicial</option></select></div>
+ <div class="notice">Antes de generar, revisa el coste que te muestra Magic Hour. El saldo gratuito de la web y el saldo de API pueden ser distintos. Esta aplicación no garantiza créditos disponibles.</div>
+ <div class="field"><label for="backendUrl">Dirección del servidor privado (Render)</label><input id="backendUrl" placeholder="https://tu-servicio.onrender.com" autocomplete="url"><div class="hint">Se configura después de publicar el backend. No introduzcas aquí una API Key.</div></div>
+ <div class="row2"><div class="field"><label for="apiUser">Usuario privado del servidor</label><input id="apiUser" value="spritelab" autocomplete="username"></div><div class="field"><label for="apiPass">Contraseña privada del servidor</label><input id="apiPass" type="password" autocomplete="current-password" placeholder="La configurarás en Render"></div></div>
+ <button class="green" id="generateBtn" style="width:100%">Generar vídeo con Magic Hour</button>
+ <div class="bar" id="genBar"><span id="genBarFill"></span></div><div class="status" id="genStatus" style="margin-top:11px">Listo cuando el backend esté publicado y configurado.</div>
+</section>
+<section class="panel">
+ <div class="panel-head"><span class="step">02</span><div><h2>Vídeo generado o importado</h2><p class="sub">Puedes usar el vídeo de IA o importar un MP4/WEBM existente.</p></div></div>
+ <div class="video-wrap" id="videoWrap"><div class="placeholder">Aquí aparecerá la vista previa del vídeo.</div><video id="videoPreview" controls playsinline style="display:none"></video></div>
+ <input class="file" id="videoFile" type="file" accept="video/mp4,video/webm,video/quicktime">
+ <div class="actions"><button class="secondary" id="importVideoBtn">Importar MP4 / WEBM</button><button class="secondary" id="downloadVideoBtn" disabled>Descargar vídeo</button></div>
+ <div class="status" id="videoStatus" style="margin-top:12px">Todavía no hay ningún vídeo cargado.</div>
+ <div class="notice">La generación IA se ejecuta en el servidor, no en tu PC. La extracción de fotogramas se procesa localmente en Chrome.</div>
+</section>
+<section class="panel full">
+ <div class="panel-head"><span class="step">03</span><div><h2>Extraer fotogramas</h2><p class="sub">Crea los cuadros de animación desde el vídeo cargado.</p></div></div>
+ <div class="row2"><div class="field"><label for="frameCount">Cantidad de fotogramas</label><select id="frameCount"><option>8</option><option selected>12</option><option>16</option><option>20</option><option>24</option><option>32</option><option>48</option></select></div><div class="field"><label for="fitMode">Ajuste de imagen</label><select id="fitMode"><option value="contain">Contain · no recorta</option><option value="cover">Cover · rellena la celda</option></select></div></div>
+ <div class="row2"><div class="field"><label for="cellWidth">Ancho de celda (px)</label><input id="cellWidth" type="number" min="32" max="1024" value="256"></div><div class="field"><label for="cellHeight">Alto de celda (px)</label><input id="cellHeight" type="number" min="32" max="1024" value="256"></div></div>
+ <div class="row2"><div class="field"><label for="columns">Columnas de la hoja</label><select id="columns"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>8</option></select></div><div class="field"><label for="fps">FPS del sprite (referencia)</label><select id="fps"><option>8</option><option>10</option><option selected>12</option><option>15</option><option>24</option><option>30</option></select></div></div>
+ <div class="actions"><button id="extractBtn" disabled>Extraer fotogramas</button><button class="secondary" id="makeSheetBtn" disabled>Crear spritesheet PNG</button></div>
+ <div class="bar" id="extractBar"><span id="extractBarFill"></span></div><div class="status" id="extractStatus" style="margin-top:11px">Carga un vídeo para empezar.</div>
+ <div id="frameGallery" class="grid-preview"></div>
+ <div id="sheetPreviewWrap" style="display:none;margin-top:16px"><div class="panel-head"><h2>Vista previa de la spritesheet</h2></div><div class="drop"><img id="sheetPreview" alt="Spritesheet" style="display:block;max-height:500px"></div><div class="download-row"><button class="green" id="downloadSheetBtn">Descargar PNG</button><button class="secondary" id="downloadManifestBtn">Descargar manifest.json</button></div></div>
+</section>
+</div>
+<p class="foot">SPRITE LAB 0.2 · Proyecto independiente · No modifica la versión 0.1.0 · La clave de Magic Hour nunca se guarda en el navegador.</p>
+</main>
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+let characterFile = null, videoUrl = null, frames = [], sheetBlob = null, manifest = null, resultVideoUrl = null;
+let authUser = '', authPass = '';
+const setStatus = (id, message, type='') => { const el=$(id); el.textContent=message; el.className='status'+(type?' '+type:''); };
+const setBar = (id, fillId, pct, visible=true) => { $(id).style.display=visible?'block':'none'; $(fillId).style.width=Math.max(0,Math.min(100,pct))+'%'; };
+const bytesText = n => n<1024*1024?(n/1024).toFixed(0)+' KB':(n/1024/1024).toFixed(1)+' MB';
+function revoke(url){if(url)URL.revokeObjectURL(url);}
+$('chooseImage').addEventListener('click',()=>$('imageFile').click());
+$('imageDrop').addEventListener('click',e=>{if(e.target.id!=='chooseImage')$('imageFile').click();});
+$('imageFile').addEventListener('change',()=>{
+ const f=$('imageFile').files[0]; if(!f)return;
+ if(!['image/png','image/jpeg','image/webp'].includes(f.type)||f.size>10*1024*1024){setStatus('genStatus','Usa PNG, JPG o WebP de máximo 10 MB.','err');return;}
+ characterFile=f; $('imagePreview').src=URL.createObjectURL(f); $('imageDrop').classList.add('has-image');
+ setStatus('genStatus',`Imagen cargada: ${f.name} (${bytesText(f.size)}).`,'ok');
+});
+$('backendUrl').value=localStorage.getItem('spriteLabBackendUrl')||'';
+$('backendUrl').addEventListener('change',()=>localStorage.setItem('spriteLabBackendUrl',$('backendUrl').value.trim().replace(/\/$/,'')));
+function basicHeader(){return 'Basic '+btoa(unescape(encodeURIComponent(authUser+':'+authPass)));}
+async function readJson(response){let data={};try{data=await response.json();}catch{}if(!response.ok)throw new Error(data.detail||`Error HTTP ${response.status}`);return data;}
+$('generateBtn').addEventListener('click', async()=>{
+ if(!characterFile){setStatus('genStatus','Primero carga la imagen del personaje.','err');return;}
+ const base=$('backendUrl').value.trim().replace(/\/$/,'');
+ if(!/^https:\/\//i.test(base)){setStatus('genStatus','Primero necesitamos la dirección HTTPS del backend publicado.','err');return;}
+ authUser=$('apiUser').value.trim(); authPass=$('apiPass').value;
+ if(!authUser||!authPass){setStatus('genStatus','Escribe el usuario y la contraseña privada configurados en Render.','err');return;}
+ const btn=$('generateBtn');btn.disabled=true;setBar('genBar','genBarFill',10,true);setStatus('genStatus','Enviando la imagen al servidor privado…','work');
+ try{
+  const form=new FormData();form.append('image',characterFile);form.append('prompt',$('prompt').value.trim());form.append('model',$('model').value);form.append('duration_seconds',$('duration').value);form.append('resolution',$('resolution').value);
+  const created=await readJson(await fetch(base+'/api/v1/videos',{method:'POST',headers:{Authorization:basicHeader()},body:form}));
+  setStatus('genStatus','Trabajo enviado. Magic Hour está generando el vídeo; puede tardar varios minutos.','work');setBar('genBar','genBarFill',20,true);
+  const started=Date.now(); let data;
+  while(Date.now()-started<20*60*1000){await new Promise(r=>setTimeout(r,5000));data=await readJson(await fetch(base+'/api/v1/videos/'+encodeURIComponent(created.job_id),{headers:{Authorization:basicHeader()}}));
+   if(data.status==='complete')break;if(data.status==='error')throw new Error(data.error||'La generación falló.');
+   const pct=Math.min(90,25+Math.floor((Date.now()-started)/(20*60*1000)*65));setBar('genBar','genBarFill',pct,true);setStatus('genStatus',data.status==='queued'?'En cola…':'Generando… No cierres esta página.','work');
+  }
+  if(!data||data.status!=='complete')throw new Error('La generación tardó demasiado. Comprueba el estado del servicio antes de volver a intentarlo.');
+  const fileResponse=await fetch(base+data.video_url,{headers:{Authorization:basicHeader()}});if(!fileResponse.ok)throw new Error('El vídeo terminó, pero no se pudo descargar desde el servidor.');
+  const blob=await fileResponse.blob();revoke(resultVideoUrl);resultVideoUrl=URL.createObjectURL(blob);loadVideoUrl(resultVideoUrl,'Vídeo generado con Magic Hour.');
+  setBar('genBar','genBarFill',100,true);setStatus('genStatus','¡Vídeo generado y descargado al navegador!','ok');
+ }catch(err){setStatus('genStatus',err.message||'Error inesperado.','err');setBar('genBar','genBarFill',0,false);}
+ finally{btn.disabled=false;}
+});
+function loadVideoUrl(url,message){
+ revoke(videoUrl);videoUrl=url;$('videoPreview').src=url;$('videoPreview').style.display='block';$('videoWrap').querySelector('.placeholder')?.remove();
+ $('videoPreview').onloadedmetadata=()=>{$('extractBtn').disabled=false;$('downloadVideoBtn').disabled=false;setStatus('videoStatus',`${message} Duración: ${$('videoPreview').duration.toFixed(2)} s.`,'ok');};
+ $('videoPreview').onerror=()=>setStatus('videoStatus','No se pudo leer el vídeo. Prueba MP4 H.264 o WebM compatible con Chrome.','err');
+}
+$('importVideoBtn').addEventListener('click',()=>$('videoFile').click());
+$('videoFile').addEventListener('change',()=>{const f=$('videoFile').files[0];if(!f)return;if(f.size>500*1024*1024){setStatus('videoStatus','El vídeo supera 500 MB.','err');return;}loadVideoUrl(URL.createObjectURL(f),`Vídeo importado: ${f.name}`);});
+$('downloadVideoBtn').addEventListener('click',()=>{if(!resultVideoUrl)return;const a=document.createElement('a');a.href=resultVideoUrl;a.download='sprite-lab-video.mp4';a.click();});
+function seek(video,time){return new Promise((resolve,reject)=>{if(Math.abs(video.currentTime-time)<0.001){resolve();return;}const done=()=>{cleanup();resolve();},fail=()=>{cleanup();reject(new Error('No se pudo posicionar el vídeo.'));},cleanup=()=>{video.removeEventListener('seeked',done);video.removeEventListener('error',fail);};video.addEventListener('seeked',done,{once:true});video.addEventListener('error',fail,{once:true});video.currentTime=time;});}
+function drawFit(ctx,source,w,h,mode){ctx.clearRect(0,0,w,h);const sw=source.videoWidth||source.width,sh=source.videoHeight||source.height;const scale=mode==='cover'?Math.max(w/sw,h/sh):Math.min(w/sw,h/sh);const dw=sw*scale,dh=sh*scale;ctx.drawImage(source,(w-dw)/2,(h-dh)/2,dw,dh);}
+$('extractBtn').addEventListener('click',async()=>{
+ const v=$('videoPreview');if(!v.src||!Number.isFinite(v.duration)||v.duration<=0){setStatus('extractStatus','Carga primero un vídeo válido.','err');return;}
+ const count=Number($('frameCount').value),w=Number($('cellWidth').value),h=Number($('cellHeight').value);
+ if(!Number.isInteger(w)||!Number.isInteger(h)||w<32||h<32||w>1024||h>1024){setStatus('extractStatus','El tamaño de celda debe estar entre 32 y 1024 px.','err');return;}
+ $('extractBtn').disabled=true;$('makeSheetBtn').disabled=true;frames=[];$('frameGallery').innerHTML='';setBar('extractBar','extractBarFill',0,true);setStatus('extractStatus','Extrayendo fotogramas en este navegador…','work');
+ try{
+  const end=Math.max(0,v.duration-Math.min(.05,v.duration*.005));
+  for(let i=0;i<count;i++){
+   const t=count===1?0:end*i/(count-1);await seek(v,t);
+   const c=document.createElement('canvas');c.width=w;c.height=h;drawFit(c.getContext('2d'),v,w,h,$('fitMode').value);frames.push(c);
+   setBar('extractBar','extractBarFill',(i+1)/count*100,true);
+  }
+  const gallery=$('frameGallery');frames.forEach((c,i)=>{const d=document.createElement('div');d.className='thumb';const img=document.createElement('img');img.src=c.toDataURL('image/png');img.alt='Frame '+(i+1);d.append(img);gallery.append(d);});
+  $('makeSheetBtn').disabled=false;setStatus('extractStatus',`${frames.length} fotogramas extraídos correctamente.`,'ok');
+ }catch(err){setStatus('extractStatus',err.message,'err');}finally{$('extractBtn').disabled=false;}
+});
+$('makeSheetBtn').addEventListener('click',()=>{
+ if(!frames.length)return;const cols=Number($('columns').value),w=frames[0].width,h=frames[0].height,rows=Math.ceil(frames.length/cols);
+ if(cols*w*rows*h>100000000){setStatus('extractStatus','La hoja resultante es demasiado grande. Reduce el tamaño o las columnas.','err');return;}
+ const sheet=document.createElement('canvas');sheet.width=cols*w;sheet.height=rows*h;const ctx=sheet.getContext('2d');frames.forEach((f,i)=>ctx.drawImage(f,(i%cols)*w,Math.floor(i/cols)*h));
+ sheet.toBlob(blob=>{if(!blob){setStatus('extractStatus','No se pudo crear el PNG.','err');return;}sheetBlob=blob;const url=URL.createObjectURL(blob);$('sheetPreview').src=url;$('sheetPreviewWrap').style.display='block';
+ manifest={project:'SPRITE LAB 0.2',created_at:new Date().toISOString(),source_duration_seconds:$('videoPreview').duration,frame_count:frames.length,columns:cols,rows,cell_width:w,cell_height:h,fps:Number($('fps').value),fit:$('fitMode').value,frames:frames.map((_,i)=>({index:i,x:(i%cols)*w,y:Math.floor(i/cols)*h}))};
+ setStatus('extractStatus',`Spritesheet lista: ${sheet.width} × ${sheet.height} px.`,'ok');},'image/png');
+});
+$('downloadSheetBtn').addEventListener('click',()=>downloadBlob(sheetBlob,'spritesheet.png'));
+$('downloadManifestBtn').addEventListener('click',()=>downloadBlob(new Blob([JSON.stringify(manifest,null,2)],{type:'application/json'}),'manifest.json'));
+function downloadBlob(blob,name){if(!blob)return;const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),2000);}
+})();
+</script>
+</body></html>

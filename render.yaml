@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: sprite-lab-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: SPRITE_LAB_ACCESS_USER
+        value: spritelab
+      - key: SPRITE_LAB_ACCESS_PASSWORD
+        sync: false
+      - key: MAGIC_HOUR_API_KEY
+        sync: false
+      - key: MAX_UPLOAD_MB
+        value: 10
+      - key: MAX_ACTIVE_JOBS
+        value: 1

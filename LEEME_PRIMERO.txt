@@ -1,0 +1,16 @@
+SPRITE LAB 0.2 — RECONSTRUCCIÓN
+
+IMPORTANTE
+- Esta es una reconstrucción nueva basada en las funciones documentadas de SPRITE LAB 0.1 y en el flujo Magic Hour revisado.
+- No pude descargar ni inspeccionar el código original de GitHub desde esta sesión. Por tanto, esto NO es una modificación línea por línea del 0.1.0.
+- Conserva la etiqueta v0.1.0 y sube esta versión a una rama nueva llamada version-0.2.
+- No hay API Keys ni contraseñas reales en este paquete.
+
+CONTENIDO
+- index.html: interfaz completa en español; imagen, prompt, Magic Hour vía backend, importación de MP4/WEBM, extracción de frames, spritesheet PNG y manifest JSON.
+- backend/: API privada Python/FastAPI y cliente SDK Magic Hour.
+- render.yaml: configuración para desplegar el backend gratuito en Render.
+- README_PASO_A_PASO.txt: instrucciones sencillas.
+
+IMPORTANTE SOBRE MAGIC HOUR
+El saldo de créditos de la web y los créditos API pueden no ser iguales. La integración usa la API, no los créditos de la página web. En conversaciones previas el endpoint API devolvió 401, así que todavía no está verificado que tu cuenta tenga una clave API válida y saldo API disponible. No crees una nueva clave hasta que el backend esté publicado y listo para configurarla.
